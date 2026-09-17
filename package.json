@@ -1,0 +1,17 @@
+{
+  "name": "gobook-now",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend start:dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.13"
+  }
+}

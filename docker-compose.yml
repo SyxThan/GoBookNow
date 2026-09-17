@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: gobook-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gobook
+      POSTGRES_PASSWORD: gobook_dev
+      POSTGRES_DB: gobook
+    ports:
+      - "5432:5432"
+    volumes:
+      - gobook_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gobook -d gobook"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: local-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  gobook_postgres_data:
