@@ -1,0 +1,98 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+**/node_modules/
+.pnpm-store/
+
+# =========================
+# Environment
+# =========================
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# =========================
+# Build & Caching (Turborepo, Next.js, NestJS)
+# =========================
+dist/
+**/dist/
+
+.next/
+**/.next/
+
+build/
+**/build/
+
+out/
+**/out/
+
+.turbo/
+**/.turbo/
+
+*.tsbuildinfo
+
+# =========================
+# Prisma generated client
+# =========================
+apps/backend/src/generated/prisma/
+
+# LƯU Ý: KHÔNG ignore thư mục migrations
+# !apps/backend/prisma/migrations/
+
+# =========================
+# AI Agents & IDE
+# =========================
+.agents/
+**/.agents/
+.windsurf/
+**/.windsurf/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# =========================
+# Test
+# =========================
+coverage/
+**/coverage/
+playwright-report/
+test-results/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+pnpm-debug.log*
+npm-debug.log*
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =========================
+# Temporary
+# =========================
+tmp/
+temp/
+.cache/
+*.tmp
+*.swp
+
+# =========================
+# Keys / Certificates
+# =========================
+*.pem
+*.key
+*.p12
+*.pfx
+
+# =========================
+# Docker local override
+# =========================
+docker-compose.override.yml
