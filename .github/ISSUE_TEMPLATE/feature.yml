@@ -1,0 +1,68 @@
+name: Feature
+description: Create a new feature or technical task
+title: "[Feature] "
+labels:
+  - feature
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Vấn đề cần giải quyết là gì?
+      placeholder: Describe the problem...
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Kết quả mong muốn của issue này
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Requirements
+      description: Các yêu cầu nghiệp vụ/kỹ thuật
+      placeholder: |
+        - Requirement 1
+        - Requirement 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] Case 1
+        - [ ] Case 2
+        - [ ] Tests added
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      placeholder: GB-xxx / None
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 - Critical
+        - P1 - High
+        - P2 - Medium
+        - P3 - Low
+    validations:
+      required: true
+
+  - type: input
+    id: branch
+    attributes:
+      label: Suggested Branch
+      placeholder: feat/booking-hold

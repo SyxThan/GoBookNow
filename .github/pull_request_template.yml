@@ -1,0 +1,76 @@
+## What
+
+Mô tả ngắn gọn thay đổi trong PR.
+
+---
+
+## Why
+
+Tại sao cần thay đổi này?
+
+---
+
+## Changes
+
+- 
+- 
+- 
+
+---
+
+## How to Test
+
+1. 
+2. 
+3. 
+
+---
+
+## Related Issue
+
+Closes #
+
+---
+
+## Screenshots
+
+Nếu có thay đổi UI, thêm ảnh tại đây.
+
+---
+
+## Checklist
+
+### Code
+
+- [ ] Scope chỉ giải quyết issue hiện tại
+- [ ] Không có code/debug thừa
+- [ ] Không commit secret
+- [ ] Naming rõ ràng
+- [ ] Error handling đã xử lý
+
+### Backend
+
+- [ ] Validation đã thêm
+- [ ] Authorization đã kiểm tra
+- [ ] Migration đã review
+- [ ] Prisma generate thành công
+- [ ] API documentation đã cập nhật nếu cần
+
+### Testing
+
+- [ ] Unit tests pass
+- [ ] Integration tests pass nếu cần
+- [ ] Đã test error cases
+- [ ] Đã test thủ công
+
+### CI
+
+- [ ] Lint pass
+- [ ] Test pass
+- [ ] Build pass
+
+---
+
+## Notes
+
+Thông tin bổ sung nếu có.
