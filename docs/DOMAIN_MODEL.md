@@ -184,6 +184,9 @@ ERD v1 gồm các bảng:
 
 ```text
 users
+user_profiles
+roles
+user_roles
 refresh_tokens
 
 vendors
@@ -229,22 +232,22 @@ users
 
 ## Responsibility
 
-Đại diện tài khoản đăng nhập.
+Đại diện account/identity, chỉ chứa dữ liệu authentication, bảo mật và vòng đời tài khoản.
 
 ## Fields
 
 ```text
 id UUID PK
 
-email VARCHAR UNIQUE NOT NULL
+email VARCHAR(320) UNIQUE NOT NULL
 
-password_hash VARCHAR NOT NULL
+password_hash VARCHAR(255) NULL
 
-full_name VARCHAR NOT NULL
+status USER_STATUS NOT NULL DEFAULT ACTIVE
 
-phone VARCHAR NULL
+email_verified_at TIMESTAMP NULL
 
-status USER_STATUS NOT NULL
+last_login_at TIMESTAMP NULL
 
 created_at TIMESTAMP NOT NULL
 
@@ -252,6 +255,24 @@ updated_at TIMESTAMP NOT NULL
 
 deleted_at TIMESTAMP NULL
 ```
+
+Thông tin hiển thị không nằm trong `users`. Hồ sơ tùy chọn được lưu riêng:
+
+```text
+user_profiles
+
+id UUID PK
+user_id UUID UNIQUE NOT NULL FK -> users.id ON DELETE CASCADE
+full_name VARCHAR(120) NOT NULL
+phone VARCHAR(20) NULL
+avatar_url VARCHAR(500) NULL
+locale VARCHAR(16) NOT NULL DEFAULT 'vi-VN'
+timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Ho_Chi_Minh'
+created_at TIMESTAMP NOT NULL
+updated_at TIMESTAMP NOT NULL
+```
+
+Cardinality: `User 1 -> 0..1 UserProfile`.
 
 ## User Status
 
@@ -273,32 +294,7 @@ VENDOR
 ADMIN
 ```
 
-Có hai hướng:
-
-### Option A
-
-```text
-role ENUM
-```
-
-trực tiếp trong `users`.
-
-### Option B
-
-```text
-roles
-user_roles
-```
-
-Đề xuất MVP:
-
-```text
-users.role
-```
-
-nếu mỗi user chỉ có một role chính.
-
-Tuy nhiên GoBook có trường hợp:
+GoBook dùng `roles` và explicit junction table `user_roles`; không lưu role trực tiếp trong `users`. Thiết kế many-to-many này hỗ trợ trường hợp:
 
 ```text
 Customer
@@ -306,13 +302,7 @@ Customer
 Vendor
 ```
 
-nên khuyên dùng:
-
-```text
-user_roles
-```
-
-để tránh giới hạn về sau.
+`CUSTOMER`, `VENDOR`, và `ADMIN` là các system role ổn định, được nhận diện bằng `roles.code` thay vì numeric ID.
 
 ---
 
@@ -321,8 +311,13 @@ user_roles
 ```text
 roles
 
-id
-name
+id UUID PK
+code VARCHAR(50) UNIQUE NOT NULL
+name VARCHAR(100) NOT NULL
+description VARCHAR(255) NULL
+is_system BOOLEAN NOT NULL DEFAULT TRUE
+created_at TIMESTAMP NOT NULL
+updated_at TIMESTAMP NOT NULL
 ```
 
 Values:
@@ -338,15 +333,18 @@ Join table:
 ```text
 user_roles
 
-user_id
-role_id
+user_id UUID NOT NULL FK -> users.id ON DELETE CASCADE
+role_id UUID NOT NULL FK -> roles.id ON DELETE RESTRICT
+assigned_at TIMESTAMP NOT NULL
 ```
 
 Unique:
 
 ```text
-(user_id, role_id)
+PRIMARY KEY (user_id, role_id)
 ```
+
+Cardinality: `User N <-> N Role` thông qua `UserRole`. Composite primary key ngăn một role được gán trùng cho cùng user.
 
 ---
 
@@ -2462,7 +2460,7 @@ Không nên cho admin edit trực tiếp.
 ```text
 users.email UNIQUE
 
-roles.name UNIQUE
+roles.code UNIQUE
 
 vendors.owner_user_id UNIQUE
 

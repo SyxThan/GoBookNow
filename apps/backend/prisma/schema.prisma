@@ -16,21 +16,73 @@ enum UserStatus {
 model User {
   id String @id @default(uuid()) @db.Uuid
 
-  email String @unique
-
-  passwordHash String @map("password_hash")
-
-  fullName String @map("full_name")
-
-  phone String?
+  email        String  @unique @db.VarChar(320)
+  passwordHash String? @map("password_hash") @db.VarChar(255)
 
   status UserStatus @default(ACTIVE)
 
-  createdAt DateTime @default(now()) @map("created_at")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  lastLoginAt     DateTime? @map("last_login_at")
 
-  updatedAt DateTime @updatedAt @map("updated_at")
-
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
+  profile   UserProfile?
+  userRoles UserRole[]
+
+  @@index([status])
+  @@index([deletedAt])
   @@map("users")
+}
+
+model UserProfile {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @unique @map("user_id") @db.Uuid
+
+  fullName  String  @map("full_name") @db.VarChar(120)
+  phone     String? @db.VarChar(20)
+  avatarUrl String? @map("avatar_url") @db.VarChar(500)
+
+  locale   String @default("vi-VN") @db.VarChar(16)
+  timezone String @default("Asia/Ho_Chi_Minh") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Role {
+  id String @id @default(uuid()) @db.Uuid
+
+  code        String  @unique @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(255)
+
+  isSystem Boolean @default(true) @map("is_system")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userRoles UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
 }
