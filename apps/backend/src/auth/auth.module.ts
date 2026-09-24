@@ -6,6 +6,9 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RefreshTokenService } from './refresh-token.service.js';
+import { OwnershipService } from './authorization/ownership.service.js';
+import { OwnershipGuard } from './guards/ownership.guard.js';
+import { RolesGuard } from './guards/roles.guard.js';
 
 function parseAccessTokenLifetime(value: string): number {
   const match = value
@@ -60,7 +63,20 @@ function parseAccessTokenLifetime(value: string): number {
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RefreshTokenService, JwtAuthGuard],
-  exports: [AuthService],
+  providers: [
+    AuthService,
+    RefreshTokenService,
+    JwtAuthGuard,
+    RolesGuard,
+    OwnershipGuard,
+    OwnershipService,
+  ],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    RolesGuard,
+    OwnershipGuard,
+    OwnershipService,
+  ],
 })
 export class AuthModule {}

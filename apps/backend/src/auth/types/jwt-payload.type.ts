@@ -1,11 +1,12 @@
+import type { AuthenticatedUser } from './authenticated-user.type.js';
+
 export type JwtPayload = {
   sub: string;
   roles: string[];
   type: 'access';
 };
 
-export type CurrentUser = {
-  id: string;
+export type CurrentUser = AuthenticatedUser & {
   email: string;
   profile: {
     fullName: string;
@@ -14,5 +15,4 @@ export type CurrentUser = {
     locale: string;
     timezone: string;
   } | null;
-  roles: string[];
 };
