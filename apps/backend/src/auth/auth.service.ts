@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
   ForbiddenException,
@@ -9,8 +10,16 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { Prisma, UserStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import {
+  authRelations,
+  type UserWithAuthRelations,
+} from './auth-user.query.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RegisterDto } from './dto/register.dto.js';
+import {
+  RefreshTokenService,
+  type SessionMetadata,
+} from './refresh-token.service.js';
 import type { CurrentUser, JwtPayload } from './types/jwt-payload.type.js';
 
 const CUSTOMER_ROLE = 'CUSTOMER';
@@ -24,29 +33,29 @@ const ARGON2_OPTIONS: argon2.HashOptions & { raw?: false } = {
   parallelism: 1,
 };
 
-const authRelations = {
-  profile: true,
-  userRoles: {
-    include: {
-      role: true,
-    },
-  },
-} as const;
+export type AccessTokenResponse = {
+  accessToken: string;
+  tokenType: 'Bearer';
+  expiresIn: number;
+};
 
-type UserWithAuthRelations = Prisma.UserGetPayload<{
-  include: typeof authRelations;
-}>;
-
-type AuthResponse = {
+export type AuthResponse = AccessTokenResponse & {
   user: {
     id: string;
     email: string;
     fullName: string | null;
     roles: string[];
   };
-  accessToken: string;
-  tokenType: 'Bearer';
-  expiresIn: number;
+};
+
+export type AuthSessionResult = {
+  body: AuthResponse;
+  refreshToken: string;
+};
+
+export type RefreshSessionResult = {
+  body: AccessTokenResponse;
+  refreshToken: string;
 };
 
 @Injectable()
@@ -54,9 +63,13 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly refreshTokenService: RefreshTokenService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<AuthResponse> {
+  async register(
+    dto: RegisterDto,
+    metadata: SessionMetadata,
+  ): Promise<AuthSessionResult> {
     const email = this.normalizeEmail(dto.email);
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
@@ -109,10 +122,18 @@ export class AuthService {
       throw error;
     }
 
-    return this.createAuthResponse(user);
+    const [body, refreshToken] = await Promise.all([
+      this.createAuthResponse(user),
+      this.refreshTokenService.createSession(user.id, metadata),
+    ]);
+
+    return { body, refreshToken };
   }
 
-  async login(dto: LoginDto): Promise<AuthResponse> {
+  async login(
+    dto: LoginDto,
+    metadata: SessionMetadata,
+  ): Promise<AuthSessionResult> {
     const email = this.normalizeEmail(dto.email);
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -131,13 +152,33 @@ export class AuthService {
       throw new ForbiddenException('Account is not active');
     }
 
-    const response = await this.createAuthResponse(user);
+    const [body, refreshToken] = await Promise.all([
+      this.createAuthResponse(user),
+      this.refreshTokenService.createSession(user.id, metadata),
+    ]);
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
-    return response;
+    return { body, refreshToken };
+  }
+
+  async refresh(
+    rawToken: string,
+    metadata: SessionMetadata,
+  ): Promise<RefreshSessionResult> {
+    const rotated = await this.refreshTokenService.rotate(rawToken, metadata);
+    return {
+      body: await this.createAccessTokenResponse(rotated.user),
+      refreshToken: rotated.rawToken,
+    };
+  }
+
+  async logout(rawToken: string | undefined): Promise<void> {
+    if (rawToken) {
+      await this.refreshTokenService.revokeSession(rawToken);
+    }
   }
 
   async getCurrentUser(userId: string): Promise<CurrentUser> {
@@ -173,13 +214,32 @@ export class AuthService {
   private async createAuthResponse(
     user: UserWithAuthRelations,
   ): Promise<AuthResponse> {
+    const token = await this.createAccessTokenResponse(user);
+    const roles = this.getRoleCodes(user);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.profile?.fullName ?? null,
+        roles,
+      },
+      ...token,
+    };
+  }
+
+  private async createAccessTokenResponse(
+    user: UserWithAuthRelations,
+  ): Promise<AccessTokenResponse> {
     const roles = this.getRoleCodes(user);
     const payload: JwtPayload = {
       sub: user.id,
       roles,
       type: 'access',
     };
-    const accessToken = await this.jwtService.signAsync(payload);
+    const accessToken = await this.jwtService.signAsync(payload, {
+      jwtid: randomUUID(),
+    });
     const decoded = this.jwtService.decode<
       JwtPayload & {
         iat: number;
@@ -192,12 +252,6 @@ export class AuthService {
     }
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        fullName: user.profile?.fullName ?? null,
-        roles,
-      },
       accessToken,
       tokenType: 'Bearer',
       expiresIn: decoded.exp - decoded.iat,
