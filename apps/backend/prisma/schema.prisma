@@ -19,6 +19,21 @@ enum RefreshTokenRevokedReason {
   ACCOUNT_DISABLED
 }
 
+enum VendorStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum VendorType {
+  INDIVIDUAL
+  HOUSEHOLD_BUSINESS
+  COMPANY
+  ORGANIZATION
+}
+
 model User {
   id String @id @default(uuid()) @db.Uuid
 
@@ -35,6 +50,7 @@ model User {
   deletedAt DateTime? @map("deleted_at")
 
   profile       UserProfile?
+  vendor        Vendor?
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
 
@@ -122,4 +138,42 @@ model UserRole {
   @@id([userId, roleId])
   @@index([roleId])
   @@map("user_roles")
+}
+
+model Vendor {
+  id String @id @default(uuid()) @db.Uuid
+
+  ownerUserId String @unique @map("owner_user_id") @db.Uuid
+
+  displayName String  @map("display_name") @db.VarChar(150)
+  slug        String  @unique @db.VarChar(180)
+  description String? @db.VarChar(1000)
+  logoUrl     String? @map("logo_url") @db.VarChar(500)
+
+  legalName                  String?     @map("legal_name") @db.VarChar(200)
+  vendorType                 VendorType? @map("vendor_type")
+  taxCode                    String?     @unique @map("tax_code") @db.VarChar(50)
+  businessRegistrationNumber String?     @unique @map("business_registration_number") @db.VarChar(100)
+  legalRepresentativeName    String?     @map("legal_representative_name") @db.VarChar(150)
+
+  contactEmail String? @map("contact_email") @db.VarChar(320)
+  contactPhone String? @map("contact_phone") @db.VarChar(30)
+
+  addressLine String? @map("address_line") @db.VarChar(255)
+  ward        String? @db.VarChar(100)
+  district    String? @db.VarChar(100)
+  province    String? @db.VarChar(100)
+  countryCode String  @default("VN") @map("country_code") @db.VarChar(2)
+
+  status VendorStatus @default(DRAFT)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@index([displayName])
+  @@map("vendors")
 }

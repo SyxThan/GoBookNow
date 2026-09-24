@@ -420,7 +420,10 @@ vendors
 
 ## Purpose
 
-Đại diện đơn vị kinh doanh.
+Đại diện hồ sơ tổ chức/đơn vị kinh doanh, tách biệt hoàn toàn với `UserProfile`.
+`VENDOR` role là quyền truy cập sau phê duyệt; sự tồn tại của Vendor entity không
+tự động cấp role này. Vì vậy một `CUSTOMER` có thể sở hữu Vendor ở trạng thái
+`DRAFT`.
 
 Fields:
 
@@ -429,19 +432,39 @@ id UUID PK
 
 owner_user_id UUID FK UNIQUE
 
-business_name VARCHAR NOT NULL
+display_name VARCHAR(150) NOT NULL
 
-description TEXT NULL
+slug VARCHAR(180) UNIQUE NOT NULL
 
-email VARCHAR NOT NULL
+description VARCHAR(1000) NULL
 
-phone VARCHAR NULL
+logo_url VARCHAR(500) NULL
 
-address TEXT NULL
+legal_name VARCHAR(200) NULL
 
-status VENDOR_STATUS NOT NULL
+vendor_type VENDOR_TYPE NULL
 
-approved_at TIMESTAMP NULL
+tax_code VARCHAR(50) UNIQUE NULL
+
+business_registration_number VARCHAR(100) UNIQUE NULL
+
+legal_representative_name VARCHAR(150) NULL
+
+contact_email VARCHAR(320) NULL
+
+contact_phone VARCHAR(30) NULL
+
+address_line VARCHAR(255) NULL
+
+ward VARCHAR(100) NULL
+
+district VARCHAR(100) NULL
+
+province VARCHAR(100) NULL
+
+country_code VARCHAR(2) NOT NULL DEFAULT 'VN'
+
+status VENDOR_STATUS NOT NULL DEFAULT DRAFT
 
 created_at TIMESTAMP NOT NULL
 
@@ -455,10 +478,23 @@ deleted_at TIMESTAMP NULL
 # 14. Vendor Status
 
 ```text
+DRAFT
 PENDING
 APPROVED
 REJECTED
 SUSPENDED
+```
+
+Vendor mới được tạo với `DRAFT`. Client không được tự thay đổi status; các
+transition onboarding được xử lý bởi Vendor Application flow riêng.
+
+Vendor type:
+
+```text
+INDIVIDUAL
+HOUSEHOLD_BUSINESS
+COMPANY
+ORGANIZATION
 ```
 
 ---
@@ -474,6 +510,8 @@ Trong MVP:
 
 > Một User chỉ sở hữu tối đa một Vendor.
 
+Constraint `UNIQUE(owner_user_id)` bảo vệ invariant này ở database.
+
 Sau này có thể mở rộng:
 
 ```text
@@ -486,6 +524,15 @@ nếu nhiều nhân viên cùng quản lý Vendor.
 ---
 
 # 16. Vendor Ownership
+
+Management API resolve ownership từ database:
+
+```text
+Vendor.id → Vendor.owner_user_id → authenticated User.id
+```
+
+Không nhận owner identity từ request body/query/header. Xóa hồ sơ là soft
+delete và chỉ được phép ở `DRAFT` hoặc `REJECTED`.
 
 Vendor sở hữu:
 
