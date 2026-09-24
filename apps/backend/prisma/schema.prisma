@@ -34,6 +34,19 @@ enum VendorType {
   ORGANIZATION
 }
 
+enum VendorApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VendorDocumentType {
+  BUSINESS_REGISTRATION
+  TAX_DOCUMENT
+  REPRESENTATIVE_ID
+  OTHER
+}
+
 model User {
   id String @id @default(uuid()) @db.Uuid
 
@@ -53,6 +66,9 @@ model User {
   vendor        Vendor?
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
+
+  reviewedVendorApplications      VendorApplication[]        @relation("VendorApplicationReviewer")
+  vendorApplicationHistoryEntries VendorApplicationHistory[] @relation("VendorApplicationHistoryActor")
 
   @@index([status])
   @@index([deletedAt])
@@ -171,9 +187,77 @@ model Vendor {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  owner        User                @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  applications VendorApplication[]
 
   @@index([status])
   @@index([displayName])
   @@map("vendors")
+}
+
+model VendorApplication {
+  id String @id @default(uuid()) @db.Uuid
+
+  vendorId String @map("vendor_id") @db.Uuid
+
+  status VendorApplicationStatus @default(PENDING)
+
+  submittedAt DateTime  @default(now()) @map("submitted_at")
+  reviewedAt  DateTime? @map("reviewed_at")
+
+  reviewedByUserId String? @map("reviewed_by_user_id") @db.Uuid
+  reviewNote       String? @map("review_note") @db.VarChar(1000)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  reviewer User?  @relation("VendorApplicationReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  documents VendorApplicationDocument[]
+  history   VendorApplicationHistory[]
+
+  @@index([vendorId])
+  @@index([status])
+  @@index([submittedAt])
+  @@map("vendor_applications")
+}
+
+model VendorApplicationDocument {
+  id String @id @default(uuid()) @db.Uuid
+
+  applicationId String @map("application_id") @db.Uuid
+
+  documentType VendorDocumentType @map("document_type")
+  originalName String             @map("original_name") @db.VarChar(255)
+  storedName   String             @map("stored_name") @db.VarChar(255)
+  fileUrl      String             @map("file_url") @db.VarChar(500)
+  mimeType     String             @map("mime_type") @db.VarChar(100)
+  fileSize     Int                @map("file_size")
+  uploadedAt   DateTime           @default(now()) @map("uploaded_at")
+
+  application VendorApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("vendor_application_documents")
+}
+
+model VendorApplicationHistory {
+  id String @id @default(uuid()) @db.Uuid
+
+  applicationId String @map("application_id") @db.Uuid
+
+  fromStatus VendorApplicationStatus? @map("from_status")
+  toStatus   VendorApplicationStatus  @map("to_status")
+
+  changedByUserId String   @map("changed_by_user_id") @db.Uuid
+  note            String?  @db.VarChar(1000)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  application VendorApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  changedBy   User              @relation("VendorApplicationHistoryActor", fields: [changedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId])
+  @@index([changedByUserId])
+  @@map("vendor_application_history")
 }

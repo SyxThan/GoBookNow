@@ -66,7 +66,9 @@ export async function apiRequest<T>(
   allowRefresh = true,
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body && !headers.has("Content-Type")) {
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
@@ -91,4 +93,30 @@ export async function apiRequest<T>(
   if (!response.ok) throw await readError(response);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export async function apiDownload(
+  path: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  allowRefresh = true,
+): Promise<Blob> {
+  const headers = new Headers();
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers,
+    credentials: "include",
+  });
+  if (response.status === 401 && allowRefresh) {
+    try {
+      const refreshedToken = await refreshAccessToken();
+      onToken(refreshedToken);
+      return apiDownload(path, refreshedToken, onToken, false);
+    } catch {
+      onToken(null);
+      throw new ApiError(401, "Phiên đăng nhập đã hết hạn.");
+    }
+  }
+  if (!response.ok) throw await readError(response);
+  return response.blob();
 }

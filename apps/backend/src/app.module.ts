@@ -6,6 +6,7 @@ import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { PrismaModule } from './database/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
+import { VendorApplicationsModule } from './vendor-applications/vendor-applications.module.js';
 import { VendorsModule } from './vendors/vendors.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
@@ -19,6 +20,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuthModule,
     HealthModule,
     VendorsModule,
+    VendorApplicationsModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
     ObserveModule.forRoot({

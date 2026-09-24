@@ -85,6 +85,10 @@ temp/
 *.tmp
 *.swp
 
+# Local development uploads
+uploads/
+**/uploads/
+
 # =========================
 # Keys / Certificates
 # =========================

@@ -12,12 +12,23 @@ export default function Home() {
           Quản lý hồ sơ tổ chức, chuẩn bị cho quá trình xét duyệt và bắt đầu xây
           dựng gian hàng của bạn.
         </p>
-        <Link
-          href="/vendor/profile"
-          className="primary-button mt-9 inline-flex"
-        >
-          Mở Vendor Profile
-        </Link>
+        <div className="mt-9 flex flex-wrap justify-center gap-3">
+          <Link href="/vendor/profile" className="primary-button inline-flex">
+            Mở Vendor Profile
+          </Link>
+          <Link
+            href="/vendor/application"
+            className="secondary-button inline-flex"
+          >
+            Vendor Onboarding
+          </Link>
+          <Link
+            href="/admin/vendor-applications"
+            className="secondary-button inline-flex"
+          >
+            Admin Review
+          </Link>
+        </div>
       </section>
     </main>
   );
