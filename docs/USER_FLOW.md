@@ -1632,22 +1632,18 @@ khái niệm độc lập; tạo hồ sơ không tự động cấp role hoặc 
 Sau khi hồ sơ sẵn sàng, User mở:
 
 ```text
-/become-vendor
+/vendor/application
 ```
 
-Điền:
+User submit hồ sơ hiện tại, sau đó chọn loại giấy tờ và upload tối đa 5 file
+PDF/JPG/PNG, mỗi file tối đa 5 MB. Tài liệu chỉ được đọc qua protected API bởi
+Vendor owner hoặc ADMIN.
+
+Application mới:
 
 ```text
-business name
-business type
-description
-phone
-email
-address
-documents
+PENDING
 ```
-
-Submit.
 
 ---
 
@@ -1667,6 +1663,8 @@ APPROVED
 Vendor record active
 ↓
 User receives VENDOR role
+↓
+History records PENDING → APPROVED
 ```
 
 ---
@@ -1706,11 +1704,16 @@ reason
 User có thể:
 
 ```text
-edit
-resubmit
+edit Vendor profile
+resubmit as a NEW application
 ```
 
-tùy implementation.
+Application cũ và rejection reason vẫn nằm trong timeline. Resubmit đồng bộ
+Vendor về `PENDING`; Admin có thể review application mới độc lập.
+
+Admin mở `/admin/vendor-applications`, filter theo status, xem Vendor profile,
+document metadata/download và timeline. Approve cần confirmation. Reject yêu
+cầu lý do không rỗng. Mọi transition được ghi append-only history.
 
 ---
 

@@ -580,9 +580,21 @@ PENDING
  └──→ REJECTED
 ```
 
+Application không có trạng thái `DRAFT`. Submit từ Vendor `DRAFT` hoặc
+`REJECTED` tạo application mới `PENDING` và đồng bộ Vendor thành `PENDING`.
+
+- `PENDING → APPROVED`: Admin review, Vendor thành `APPROVED`, owner nhận thêm
+  role `VENDOR` nhưng vẫn giữ `CUSTOMER`.
+- `PENDING → REJECTED`: Admin bắt buộc nhập lý do, Vendor thành `REJECTED`,
+  không cấp role.
+- Application terminal không được chuyển lại hoặc review lần hai.
+- Review dùng transaction và conditional update nên chỉ một concurrent Admin
+  transition có thể thành công.
+
 Nếu rejected:
 
-User có thể sửa và tạo application mới.
+User có thể sửa Vendor và tạo application `PENDING` mới. Application và history
+cũ được giữ nguyên.
 
 ---
 

@@ -559,53 +559,63 @@ Fields:
 ```text
 id UUID PK
 
-user_id UUID FK
+vendor_id UUID FK -> vendors.id ON DELETE RESTRICT
 
-business_name VARCHAR NOT NULL
+status VENDOR_APPLICATION_STATUS NOT NULL DEFAULT PENDING
 
-business_type VARCHAR NULL
-
-description TEXT NULL
-
-email VARCHAR NOT NULL
-
-phone VARCHAR NULL
-
-address TEXT NULL
-
-identity_document_url TEXT NULL
-
-business_document_url TEXT NULL
-
-status APPLICATION_STATUS NOT NULL
-
-rejection_reason TEXT NULL
-
-reviewed_by UUID FK users.id NULL
+submitted_at TIMESTAMP NOT NULL
 
 reviewed_at TIMESTAMP NULL
+
+reviewed_by_user_id UUID FK -> users.id ON DELETE SET NULL
+
+review_note VARCHAR(1000) NULL
 
 created_at TIMESTAMP NOT NULL
 
 updated_at TIMESTAMP NOT NULL
 ```
 
+`VendorApplicationStatus` chỉ gồm `PENDING`, `APPROVED`, `REJECTED`. Mỗi lần
+submit hoặc resubmit tạo một row mới; application cũ không bị overwrite.
+
+## VendorApplicationDocument
+
+`vendor_application_documents` lưu metadata của tối đa 5 tài liệu trên mỗi
+application: loại tài liệu, tên gốc, generated stored name, protected URL, MIME,
+kích thước và thời gian upload. Binary được lưu ngoài PostgreSQL. Document thuộc
+application với `ON DELETE CASCADE`.
+
+## VendorApplicationHistory
+
+`vendor_application_history` là audit trail append-only gồm `from_status`,
+`to_status`, actor, note và timestamp. History thuộc application với
+`ON DELETE CASCADE`; actor dùng `ON DELETE RESTRICT`.
+
 ---
 
 # 18. VendorApplication Cardinality
 
 ```text
-User 1
+Vendor 1
  └── N VendorApplications
+
+VendorApplication 1
+ ├── N VendorApplicationDocuments
+ └── N VendorApplicationHistoryEntries
 ```
 
-Một user có thể từng bị reject và apply lại.
+Một Vendor có thể từng bị reject và submit lại. Owner được suy ra qua
+`VendorApplication.vendor_id → Vendor.owner_user_id`.
 
 Business constraint:
 
 ```text
-Maximum 1 PENDING application per User
+Maximum 1 PENDING application per Vendor
 ```
+
+Invariant được bảo vệ ở service và PostgreSQL partial unique index trên
+`vendor_applications(vendor_id) WHERE status = 'PENDING'`.
 
 ---
 
@@ -2074,7 +2084,9 @@ entity_id = "..."
 | User | Self |
 | RefreshToken | User |
 | Vendor | owner_user_id |
-| VendorApplication | User |
+| VendorApplication | Vendor → owner_user_id |
+| VendorApplicationDocument | VendorApplication → Vendor |
+| VendorApplicationHistory | VendorApplication → Vendor / changed_by_user_id actor |
 | Service | Vendor |
 | ServiceImage | Service → Vendor |
 | Slot | Service → Vendor |
@@ -2102,7 +2114,9 @@ entity_id = "..."
 |---|---|---|---|
 | User | has | RefreshToken | 1:N |
 | User | owns | Vendor | 1:0..1 |
-| User | submits | VendorApplication | 1:N |
+| Vendor | has | VendorApplication | 1:N |
+| VendorApplication | has | VendorApplicationDocument | 1:N |
+| VendorApplication | has | VendorApplicationHistory | 1:N |
 | Vendor | owns | Service | 1:N |
 | Category | classifies | Service | 1:N |
 | Service | has | ServiceImage | 1:N |
