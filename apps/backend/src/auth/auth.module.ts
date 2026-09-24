@@ -5,6 +5,7 @@ import { PrismaModule } from '../database/prisma/prisma.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
+import { RefreshTokenService } from './refresh-token.service.js';
 
 function parseAccessTokenLifetime(value: string): number {
   const match = value
@@ -59,7 +60,7 @@ function parseAccessTokenLifetime(value: string): number {
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard],
+  providers: [AuthService, RefreshTokenService, JwtAuthGuard],
   exports: [AuthService],
 })
 export class AuthModule {}

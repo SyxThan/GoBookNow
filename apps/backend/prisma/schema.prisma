@@ -13,6 +13,12 @@ enum UserStatus {
   DISABLED
 }
 
+enum RefreshTokenRevokedReason {
+  ROTATED
+  LOGOUT
+  ACCOUNT_DISABLED
+}
+
 model User {
   id String @id @default(uuid()) @db.Uuid
 
@@ -28,12 +34,43 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  profile   UserProfile?
-  userRoles UserRole[]
+  profile       UserProfile?
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
 
   @@index([status])
   @@index([deletedAt])
   @@map("users")
+}
+
+model RefreshToken {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+
+  tokenHash String @unique @map("token_hash") @db.Char(64)
+  familyId  String @map("family_id") @db.Uuid
+
+  expiresAt DateTime @map("expires_at")
+
+  revokedAt     DateTime?                  @map("revoked_at")
+  revokedReason RefreshTokenRevokedReason? @map("revoked_reason")
+
+  replacedByTokenId String?   @map("replaced_by_token_id") @db.Uuid
+  lastUsedAt        DateTime? @map("last_used_at")
+
+  userAgent String? @map("user_agent") @db.VarChar(500)
+  ipAddress String? @map("ip_address") @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@index([userId, familyId])
+  @@map("refresh_tokens")
 }
 
 model UserProfile {
