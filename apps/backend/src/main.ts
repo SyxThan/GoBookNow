@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule, ObserveInstrument } from './app.module.js';
+import { setupSwagger } from './swagger.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -25,9 +26,13 @@ async function bootstrap() {
   );
   app.setGlobalPrefix('api/v1');
   const port = process.env.PORT ?? 3001;
+  const swaggerEnabled = setupSwagger(app, configService);
 
   await app.listen(port);
 
   console.log(`GoBook API: http://localhost:${port}/api/v1`);
+  if (swaggerEnabled) {
+    console.log(`GoBook API docs: http://localhost:${port}/api/v1/docs`);
+  }
 }
 await bootstrap();
