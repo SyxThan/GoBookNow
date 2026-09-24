@@ -20,9 +20,9 @@ import {
   RefreshTokenService,
   type SessionMetadata,
 } from './refresh-token.service.js';
+import { RoleCode } from './constants/role.constants.js';
 import type { CurrentUser, JwtPayload } from './types/jwt-payload.type.js';
 
-const CUSTOMER_ROLE = 'CUSTOMER';
 const INVALID_CREDENTIALS_MESSAGE = 'Invalid email or password';
 const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=19456,p=1,t=2$F4goD8chtrO0g1W7n3MDjQ$c7vjWtufCjGMJLKuspXWlgMa+20VluYfR+hlNVb7bp8';
@@ -81,7 +81,7 @@ export class AuthService {
     }
 
     const customerRole = await this.prisma.role.findUnique({
-      where: { code: CUSTOMER_ROLE },
+      where: { code: RoleCode.CUSTOMER },
       select: { id: true },
     });
 
