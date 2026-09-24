@@ -72,6 +72,7 @@ function parseAccessTokenLifetime(value: string): number {
     OwnershipService,
   ],
   exports: [
+    JwtModule,
     AuthService,
     JwtAuthGuard,
     RolesGuard,

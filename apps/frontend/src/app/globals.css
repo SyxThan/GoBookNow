@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #020617;
+  --foreground: #f8fafc;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer components {
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.3em] text-teal-300;
+  }
+
+  .panel {
+    @apply rounded-3xl border border-white/10 bg-slate-900;
+  }
+
+  .section-label {
+    @apply text-xs uppercase tracking-wider text-slate-500;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-50 outline-none focus:border-teal-400 focus:ring-3 focus:ring-teal-400/10;
+  }
+
+  .primary-button {
+    @apply rounded-xl bg-teal-300 px-6 py-3 font-semibold text-slate-950 transition hover:bg-teal-200 disabled:opacity-60;
+  }
+
+  .secondary-button {
+    @apply rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-white disabled:opacity-60;
+  }
+
+  .light-button {
+    @apply self-start rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-200;
+  }
 }

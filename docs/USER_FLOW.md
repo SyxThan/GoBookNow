@@ -1594,30 +1594,42 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[Register Customer Account]
-    B[Submit Vendor Application]
-    C[Admin Review]
+    B[Create Vendor Profile in DRAFT]
+    C[Submit Vendor Application]
+    D[Admin Review]
 
-    C -->|Approved| D[Vendor Role Activated]
-    C -->|Rejected| X[Fix Information / Reapply]
+    A --> B --> C --> D
+    D -->|Approved| E[Vendor Role Activated]
+    D -->|Rejected| X[Fix Information / Reapply]
 
-    D --> E[Create Service]
-    E --> F[Upload Images]
-    F --> G[Create Slots]
-    G --> H[Configure Price]
-    H --> I[Publish]
+    E --> F[Create Service]
+    F --> G[Upload Images]
+    G --> H[Create Slots]
+    H --> I[Configure Price]
+    I --> J[Publish]
 
-    I --> J[Receive Bookings]
-    J --> K[View Customer List]
-    K --> L[Scan QR]
-    L --> M[Check-in]
-    M --> N[View Revenue Dashboard]
+    J --> K[Receive Bookings]
+    K --> L[View Customer List]
+    L --> M[Scan QR]
+    M --> N[Check-in]
+    N --> O[View Revenue Dashboard]
 ```
 
 ---
 
 # 66. Vendor Application Journey
 
-User mở:
+Trước khi nộp application, Customer mở:
+
+```text
+/vendor/profile
+```
+
+Nếu chưa có hồ sơ, tạo Vendor `DRAFT`. User có thể xem và chỉnh sửa thông tin
+tổ chức của chính mình. `Vendor entity`, `UserProfile`, và `VENDOR role` là ba
+khái niệm độc lập; tạo hồ sơ không tự động cấp role hoặc phê duyệt Vendor.
+
+Sau khi hồ sơ sẵn sàng, User mở:
 
 ```text
 /become-vendor

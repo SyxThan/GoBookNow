@@ -549,6 +549,19 @@ Không restore booking tự động.
 
 ---
 
+## Vendor Profile Lifecycle
+
+Vendor profile được tạo ở trạng thái:
+
+```text
+DRAFT
+```
+
+Trong Vendor Profile CRUD, status là read-only và không có transition. Các
+transition `DRAFT → PENDING → APPROVED/REJECTED` thuộc Vendor Application flow.
+
+---
+
 # 14. Vendor Application State Machine
 
 States:
