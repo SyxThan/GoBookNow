@@ -8,6 +8,9 @@ describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeEach(async () => {
+    process.env.JWT_ACCESS_SECRET = 'test-only-access-secret';
+    process.env.JWT_ACCESS_EXPIRES_IN = '15m';
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
