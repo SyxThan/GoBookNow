@@ -887,6 +887,8 @@ end_at TIMESTAMPTZ(3) NOT NULL
 
 capacity INT NOT NULL
 
+price_amount BIGINT NULL
+
 status SLOT_STATUS NOT NULL DEFAULT 'OPEN'
 
 created_at TIMESTAMP NOT NULL
@@ -925,6 +927,20 @@ Create yêu cầu `start_at > now`. Hai Slot active của cùng Service không �
 overlap theo điều kiện `existing.start_at < requested.end_at AND existing.end_at
 > requested.start_at`. `OPEN` và `CLOSED` đều giữ time range; `CANCELLED` và
 soft-deleted Slot không chặn range. Back-to-back được phép.
+
+`price_amount` là override tùy chọn cho từng Slot. `NULL` kế thừa
+`Service.price_amount`; `0` là override miễn phí hợp lệ. Giá hiệu lực luôn được
+chọn bằng null check rõ ràng, không dùng truthy/falsy. Vendor API trả cả
+`priceAmount` đã cấu hình và `effectivePrice`; public API chỉ trả giá hiệu lực.
+Tiền được truyền qua API bằng integer string để không mất độ chính xác.
+
+```text
+effective_price = Slot.price_amount ?? Service.price_amount
+effective_currency = Service.currency
+```
+
+Chỉ Slot tương lai ở trạng thái `OPEN` hoặc `CLOSED` được đổi giá. Slot đã bắt đầu
+hoặc `CANCELLED` trả conflict giống các thay đổi Slot khác.
 
 Application serialize create/update theo Service để tránh race giữa các API write.
 Database chưa có exclusion constraint, nên direct/out-of-band database writes vẫn
@@ -1215,9 +1231,15 @@ slot_end_snapshot TIMESTAMP NOT NULL
 
 unit_price BIGINT NOT NULL
 
+currency VARCHAR(3) NOT NULL
+
+pricing_source VARCHAR NOT NULL
+
 quantity INT NOT NULL
 
 subtotal BIGINT NOT NULL
+
+price_captured_at TIMESTAMP NOT NULL
 
 created_at TIMESTAMP
 ```
@@ -1232,6 +1254,8 @@ BookingItem phải snapshot:
 service name
 slot time
 unit price
+currency và nguồn giá (`SLOT` hoặc `SERVICE`)
+thời điểm capture giá
 ```
 
 Không chỉ reference live data.
@@ -1239,6 +1263,16 @@ Không chỉ reference live data.
 Nếu Vendor đổi Service sau đó:
 
 Booking history vẫn chính xác.
+
+Pricing foundation hiện phân giải giá từ Slot + Service trong database và tạo
+snapshot bất biến gồm `unitPriceAmount`, `currency`, `quantity`,
+`subtotalAmount`, `pricingSource`, `capturedAt`. Persistence của snapshot sẽ được
+tích hợp khi domain Reservation/Booking được implement; schema runtime hiện chưa
+có các model này.
+
+Trong flow Booking tương lai, resolve giá và persist snapshot phải nằm trong cùng
+transaction với Reservation/Booking creation để tránh khoảng trễ giữa đọc giá và
+ghi booking. Không recalculation snapshot lịch sử khi giá Service hoặc Slot đổi.
 
 ---
 

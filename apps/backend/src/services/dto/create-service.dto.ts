@@ -14,6 +14,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ServiceKind } from '../../generated/prisma/client.js';
+import { MONEY_AMOUNT_PATTERN } from '../../pricing/money.utils.js';
 
 const trimString = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -58,7 +59,7 @@ export class CreateServiceDto {
   @ApiProperty({ example: '250000', pattern: '^\\d+$', maxLength: 19 })
   @Transform(trimString)
   @IsString()
-  @Matches(/^\d+$/)
+  @Matches(MONEY_AMOUNT_PATTERN)
   @MaxLength(19)
   priceAmount: string;
 
