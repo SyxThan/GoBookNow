@@ -21,6 +21,7 @@ import {
   UserStatus,
   VendorStatus,
 } from '../src/generated/prisma/client.js';
+import { PricingService } from '../src/pricing/pricing.service.js';
 import { SlotsModule } from '../src/slots/slots.module.js';
 
 type Identity = { id: string; roles: Role[] };
@@ -29,6 +30,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let jwt: JwtService;
+  let pricing: PricingService;
   const run = randomUUID().slice(0, 8);
   const userIds: string[] = [];
   const vendorIds: string[] = [];
@@ -73,6 +75,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
     await app.init();
     prisma = fixture.get(PrismaService);
     jwt = fixture.get(JwtService);
+    pricing = fixture.get(PricingService);
 
     await Promise.all(
       Object.values(RoleCode).map((code) =>
@@ -290,6 +293,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
     endAt: string;
     capacity?: number;
     status?: SlotStatus;
+    priceAmount?: bigint | null;
     deletedAt?: Date;
   }) {
     return prisma.slot.create({
@@ -298,6 +302,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
         startAt: new Date(input.startAt),
         endAt: new Date(input.endAt),
         capacity: input.capacity ?? 10,
+        priceAmount: input.priceAmount,
         status: input.status ?? SlotStatus.OPEN,
         deletedAt: input.deletedAt,
       },
@@ -566,6 +571,158 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
       .expect(403);
   });
 
+  it('supports inherited, overridden, free, and reset Slot pricing', async () => {
+    const inherited = await createSlot(vendorA, eventServiceId, {
+      startAt: at(25, 0),
+      endAt: at(25, 1),
+      capacity: 10,
+    });
+    expect(inherited.body).toMatchObject({
+      priceAmount: null,
+      effectivePrice: {
+        amount: '1000',
+        currency: 'VND',
+        source: 'SERVICE',
+      },
+    });
+
+    const overridden = await createSlot(vendorA, eventServiceId, {
+      startAt: at(26, 0),
+      endAt: at(26, 1),
+      capacity: 10,
+      priceAmount: '1200',
+    });
+    expect(overridden.body).toMatchObject({
+      priceAmount: '1200',
+      effectivePrice: {
+        amount: '1200',
+        currency: 'VND',
+        source: 'SLOT',
+      },
+    });
+
+    const path = `/api/v1/vendor/services/${eventServiceId}/slots/${overridden.body.id}`;
+    const vendorToken = await token(vendorA);
+    const free = await request(app.getHttpServer())
+      .patch(path)
+      .auth(vendorToken, { type: 'bearer' })
+      .send({ priceAmount: '0' })
+      .expect(200);
+    expect(free.body).toMatchObject({
+      priceAmount: '0',
+      effectivePrice: { amount: '0', currency: 'VND', source: 'SLOT' },
+    });
+
+    const reset = await request(app.getHttpServer())
+      .patch(path)
+      .auth(vendorToken, { type: 'bearer' })
+      .send({ priceAmount: null })
+      .expect(200);
+    expect(reset.body).toMatchObject({
+      priceAmount: null,
+      effectivePrice: {
+        amount: '1000',
+        currency: 'VND',
+        source: 'SERVICE',
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post(`${path}/close`)
+      .auth(vendorToken, { type: 'bearer' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(path)
+      .auth(vendorToken, { type: 'bearer' })
+      .send({ priceAmount: '1300' })
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.effectivePrice).toEqual({
+          amount: '1300',
+          currency: 'VND',
+          source: 'SLOT',
+        }),
+      );
+
+    for (const priceAmount of [
+      '-1',
+      '12.5',
+      '1,000',
+      'abc',
+      ' ',
+      '9223372036854775808',
+    ]) {
+      await createSlot(
+        vendorA,
+        eventServiceId,
+        {
+          startAt: at(27, 0),
+          endAt: at(27, 1),
+          capacity: 10,
+          priceAmount,
+        },
+        400,
+      );
+    }
+  });
+
+  it('keeps captured prices immutable after Service and Slot price changes', async () => {
+    const inherited = await directSlot({
+      serviceId: serviceAId,
+      startAt: at(27, 0),
+      endAt: at(27, 1),
+      priceAmount: null,
+    });
+    await prisma.service.update({
+      where: { id: serviceAId },
+      data: { priceAmount: 100_000n },
+    });
+    const firstInherited = await pricing.createSlotSnapshot(inherited.id, 2);
+    await prisma.service.update({
+      where: { id: serviceAId },
+      data: { priceAmount: 150_000n },
+    });
+    const secondInherited = await pricing.createSlotSnapshot(inherited.id, 2);
+    expect(firstInherited.unitPriceAmount).toBe(100_000n);
+    expect(firstInherited.subtotalAmount).toBe(200_000n);
+    expect(secondInherited.unitPriceAmount).toBe(150_000n);
+    expect(Object.isFrozen(firstInherited)).toBe(true);
+
+    const overridden = await directSlot({
+      serviceId: eventServiceId,
+      startAt: at(28, 0),
+      endAt: at(28, 1),
+      priceAmount: 120_000n,
+    });
+    const firstOverride = await pricing.createSlotSnapshot(overridden.id, 1);
+    await prisma.slot.update({
+      where: { id: overridden.id },
+      data: { priceAmount: 180_000n },
+    });
+    const secondOverride = await pricing.createSlotSnapshot(overridden.id, 1);
+    expect(firstOverride.unitPriceAmount).toBe(120_000n);
+    expect(secondOverride.unitPriceAmount).toBe(180_000n);
+
+    await prisma.slot.update({
+      where: { id: overridden.id },
+      data: { priceAmount: 0n },
+    });
+    expect(await pricing.createSlotSnapshot(overridden.id, 3)).toMatchObject({
+      unitPriceAmount: 0n,
+      subtotalAmount: 0n,
+      pricingSource: 'SLOT',
+    });
+
+    await prisma.slot.update({
+      where: { id: overridden.id },
+      data: { priceAmount: 9_007_199_254_740_993n },
+    });
+    expect(await pricing.createSlotSnapshot(overridden.id, 2)).toMatchObject({
+      unitPriceAmount: 9_007_199_254_740_993n,
+      subtotalAmount: 18_014_398_509_481_986n,
+    });
+  });
+
   it('enforces OPEN/CLOSED/CANCELLED transitions and future reopening', async () => {
     const first = await createSlot(vendorA, serviceBId, {
       startAt: at(30, 0),
@@ -674,7 +831,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/vendor/services/${serviceAId}/slots/${started.id}`)
       .auth(vendorToken, { type: 'bearer' })
-      .send({ capacity: 20 })
+      .send({ priceAmount: '2000' })
       .expect(409);
 
     const cancelled = await directSlot({
@@ -686,7 +843,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/vendor/services/${eventServiceId}/slots/${cancelled.id}`)
       .auth(vendorToken, { type: 'bearer' })
-      .send({ capacity: 20 })
+      .send({ priceAmount: '2000' })
       .expect(409);
   });
 
@@ -743,6 +900,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
       startAt: at(71, 8),
       endAt: at(71, 9),
       capacity: 20,
+      priceAmount: 2500n,
     });
     await directSlot({
       serviceId: publicServiceId,
@@ -781,9 +939,16 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
       endAt: at(70, 12),
       capacity: 100,
       status: SlotStatus.OPEN,
+      price: { amount: '1000', currency: 'VND', source: 'SERVICE' },
     });
+    expect(list.body.items[0]).not.toHaveProperty('priceAmount');
     expect(list.body.items[0]).not.toHaveProperty('remainingCapacity');
     expect(list.body.items[0]).not.toHaveProperty('serviceId');
+    expect(list.body.items[1].price).toEqual({
+      amount: '2500',
+      currency: 'VND',
+      source: 'SLOT',
+    });
 
     const ranged = await request(app.getHttpServer())
       .get(

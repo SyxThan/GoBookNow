@@ -15,6 +15,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { ServiceKind } from '../../generated/prisma/client.js';
+import { MONEY_AMOUNT_PATTERN } from '../../pricing/money.utils.js';
 
 const trimString = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -63,7 +64,7 @@ export class UpdateServiceDto {
   @Transform(trimString)
   @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @Matches(/^\d+$/)
+  @Matches(MONEY_AMOUNT_PATTERN)
   @MaxLength(19)
   priceAmount?: string;
 

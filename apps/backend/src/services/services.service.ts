@@ -14,13 +14,16 @@ import {
   VendorStatus,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import {
+  MAX_MONEY_AMOUNT,
+  parseMoneyAmount,
+  serializeMoneyAmount,
+} from '../pricing/money.utils.js';
 import type { CreateServiceDto } from './dto/create-service.dto.js';
 import type { PublicServiceQueryDto } from './dto/public-service-query.dto.js';
 import type { UpdateServiceDto } from './dto/update-service.dto.js';
 import type { VendorServiceQueryDto } from './dto/vendor-service-query.dto.js';
 import { addServiceSlugSuffix, createServiceSlug } from './service-slug.js';
-
-const MAX_PRICE_AMOUNT = 9_223_372_036_854_775_807n;
 
 const categorySelect = {
   id: true,
@@ -98,7 +101,7 @@ export class ServicesService {
   ): Promise<ServiceResponse> {
     const vendorId = await this.resolveApprovedVendorId(ownerUserId);
     await this.assertCategory(dto.categoryId, dto.kind);
-    const priceAmount = this.parsePriceAmount(dto.priceAmount);
+    const priceAmount = parseMoneyAmount(dto.priceAmount);
     const baseSlug = createServiceSlug(dto.title);
     let slug = await this.findAvailableSlug(baseSlug);
 
@@ -180,7 +183,7 @@ export class ServicesService {
     const priceAmount =
       dto.priceAmount === undefined
         ? undefined
-        : this.parsePriceAmount(dto.priceAmount);
+        : parseMoneyAmount(dto.priceAmount);
 
     await this.prisma.service.update({
       where: { id: serviceId },
@@ -229,7 +232,7 @@ export class ServicesService {
     if (service.title.trim().length < 3 || service.title.length > 160) {
       throw new BadRequestException('Service title is invalid');
     }
-    if (service.priceAmount < 0n || service.priceAmount > MAX_PRICE_AMOUNT) {
+    if (service.priceAmount < 0n || service.priceAmount > MAX_MONEY_AMOUNT) {
       throw new BadRequestException('Service priceAmount is invalid');
     }
     await this.assertCategory(service.categoryId, service.kind);
@@ -413,16 +416,6 @@ export class ServicesService {
     }
   }
 
-  private parsePriceAmount(value: string): bigint {
-    const amount = BigInt(value);
-    if (amount < 0n || amount > MAX_PRICE_AMOUNT) {
-      throw new BadRequestException(
-        'priceAmount is outside the supported range',
-      );
-    }
-    return amount;
-  }
-
   private searchWhere(search?: string): Prisma.ServiceWhereInput {
     if (!search) return {};
     return {
@@ -444,7 +437,10 @@ export class ServicesService {
   }
 
   private serialize(service: ServiceRecord): ServiceResponse {
-    return { ...service, priceAmount: service.priceAmount.toString() };
+    return {
+      ...service,
+      priceAmount: serializeMoneyAmount(service.priceAmount),
+    };
   }
 
   private isUniqueConstraintError(

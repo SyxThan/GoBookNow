@@ -13,6 +13,12 @@ import {
   VendorStatus,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import {
+  parseMoneyAmount,
+  serializeMoneyAmount,
+} from '../pricing/money.utils.js';
+import { PricingService } from '../pricing/pricing.service.js';
+import type { PricingSource } from '../pricing/pricing.types.js';
 import type { CreateSlotDto } from './dto/create-slot.dto.js';
 import type { PublicSlotQueryDto } from './dto/public-slot-query.dto.js';
 import type { UpdateSlotDto } from './dto/update-slot.dto.js';
@@ -24,9 +30,11 @@ const vendorSlotSelect = {
   startAt: true,
   endAt: true,
   capacity: true,
+  priceAmount: true,
   status: true,
   createdAt: true,
   updatedAt: true,
+  service: { select: { priceAmount: true, currency: true } },
 } as const satisfies Prisma.SlotSelect;
 
 const publicSlotSelect = {
@@ -34,16 +42,33 @@ const publicSlotSelect = {
   startAt: true,
   endAt: true,
   capacity: true,
+  priceAmount: true,
   status: true,
+  service: { select: { priceAmount: true, currency: true } },
 } as const satisfies Prisma.SlotSelect;
 
-export type SlotResponse = Prisma.SlotGetPayload<{
+type VendorSlotRecord = Prisma.SlotGetPayload<{
   select: typeof vendorSlotSelect;
 }>;
 
-type PublicSlotResponse = Prisma.SlotGetPayload<{
+type PublicSlotRecord = Prisma.SlotGetPayload<{
   select: typeof publicSlotSelect;
 }>;
+
+type EffectivePriceResponse = {
+  amount: string;
+  currency: string;
+  source: PricingSource;
+};
+
+export type SlotResponse = Omit<VendorSlotRecord, 'priceAmount' | 'service'> & {
+  priceAmount: string | null;
+  effectivePrice: EffectivePriceResponse;
+};
+
+type PublicSlotResponse = Omit<PublicSlotRecord, 'priceAmount' | 'service'> & {
+  price: EffectivePriceResponse;
+};
 
 type SlotClient = Pick<Prisma.TransactionClient, 'service' | 'slot'>;
 
@@ -57,7 +82,10 @@ type Paginated<T> = {
 
 @Injectable()
 export class SlotsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pricing: PricingService,
+  ) {}
 
   async create(
     serviceId: string,
@@ -66,6 +94,8 @@ export class SlotsService {
   ): Promise<SlotResponse> {
     const startAt = this.parseTimestamp(dto.startAt, 'startAt');
     const endAt = this.parseTimestamp(dto.endAt, 'endAt');
+    const priceAmount =
+      dto.priceAmount == null ? null : parseMoneyAmount(dto.priceAmount);
 
     return this.prisma.$transaction(async (transaction) => {
       await this.lockService(transaction, serviceId);
@@ -79,16 +109,18 @@ export class SlotsService {
       this.validateDuration(service, startAt, endAt);
       await this.assertNoOverlap(transaction, serviceId, startAt, endAt);
 
-      return transaction.slot.create({
+      const slot = await transaction.slot.create({
         data: {
           serviceId,
           startAt,
           endAt,
           capacity: dto.capacity,
+          priceAmount,
           status: SlotStatus.OPEN,
         },
         select: vendorSlotSelect,
       });
+      return this.serializeVendorSlot(slot);
     });
   }
 
@@ -122,7 +154,12 @@ export class SlotsService {
       }),
       this.prisma.slot.count({ where }),
     ]);
-    return this.paginate(items, page, limit, total);
+    return this.paginate(
+      items.map((slot) => this.serializeVendorSlot(slot)),
+      page,
+      limit,
+      total,
+    );
   }
 
   async findForVendor(
@@ -136,7 +173,9 @@ export class SlotsService {
       ownerUserId,
       false,
     );
-    return this.findSlot(this.prisma, serviceId, slotId);
+    return this.serializeVendorSlot(
+      await this.findSlot(this.prisma, serviceId, slotId),
+    );
   }
 
   async update(
@@ -161,12 +200,13 @@ export class SlotsService {
       const hasChanges =
         dto.startAt !== undefined ||
         dto.endAt !== undefined ||
-        dto.capacity !== undefined;
+        dto.capacity !== undefined ||
+        dto.priceAmount !== undefined;
       const now = new Date();
       if (hasChanges && now >= slot.startAt) {
         throw new ConflictException('Started Slot cannot be updated');
       }
-      if (!hasChanges) return slot;
+      if (!hasChanges) return this.serializeVendorSlot(slot);
 
       const startAt =
         dto.startAt === undefined
@@ -189,15 +229,22 @@ export class SlotsService {
         );
       }
 
-      return transaction.slot.update({
+      const updated = await transaction.slot.update({
         where: { id: slotId },
         data: {
           startAt: dto.startAt === undefined ? undefined : startAt,
           endAt: dto.endAt === undefined ? undefined : endAt,
           capacity: dto.capacity,
+          priceAmount:
+            dto.priceAmount === undefined
+              ? undefined
+              : dto.priceAmount === null
+                ? null
+                : parseMoneyAmount(dto.priceAmount),
         },
         select: vendorSlotSelect,
       });
+      return this.serializeVendorSlot(updated);
     });
   }
 
@@ -304,7 +351,12 @@ export class SlotsService {
       }),
       this.prisma.slot.count({ where }),
     ]);
-    return this.paginate(items, page, limit, total);
+    return this.paginate(
+      items.map((slot) => this.serializePublicSlot(slot)),
+      page,
+      limit,
+      total,
+    );
   }
 
   private async transition(
@@ -345,7 +397,9 @@ export class SlotsService {
       if (result.count !== 1) {
         throw new ConflictException('Slot status changed concurrently');
       }
-      return this.findSlot(transaction, serviceId, slotId);
+      return this.serializeVendorSlot(
+        await this.findSlot(transaction, serviceId, slotId),
+      );
     });
   }
 
@@ -397,13 +451,49 @@ export class SlotsService {
     client: SlotClient,
     serviceId: string,
     slotId: string,
-  ): Promise<SlotResponse> {
+  ): Promise<VendorSlotRecord> {
     const slot = await client.slot.findFirst({
       where: { id: slotId, serviceId, deletedAt: null },
       select: vendorSlotSelect,
     });
     if (!slot) throw new NotFoundException('Slot not found');
     return slot;
+  }
+
+  private serializeVendorSlot(slot: VendorSlotRecord): SlotResponse {
+    const { service, priceAmount, ...rest } = slot;
+    const effective = this.pricing.resolveEffectivePrice({
+      slotPriceAmount: priceAmount,
+      servicePriceAmount: service.priceAmount,
+      currency: service.currency,
+    });
+    return {
+      ...rest,
+      priceAmount:
+        priceAmount === null ? null : serializeMoneyAmount(priceAmount),
+      effectivePrice: {
+        amount: serializeMoneyAmount(effective.unitPriceAmount),
+        currency: effective.currency,
+        source: effective.source,
+      },
+    };
+  }
+
+  private serializePublicSlot(slot: PublicSlotRecord): PublicSlotResponse {
+    const { service, priceAmount, ...rest } = slot;
+    const effective = this.pricing.resolveEffectivePrice({
+      slotPriceAmount: priceAmount,
+      servicePriceAmount: service.priceAmount,
+      currency: service.currency,
+    });
+    return {
+      ...rest,
+      price: {
+        amount: serializeMoneyAmount(effective.unitPriceAmount),
+        currency: effective.currency,
+        source: effective.source,
+      },
+    };
   }
 
   private validateTimeRange(

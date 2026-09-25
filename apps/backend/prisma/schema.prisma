@@ -296,6 +296,8 @@ model Slot {
   endAt    DateTime @map("end_at") @db.Timestamptz(3)
   capacity Int
 
+  priceAmount BigInt? @map("price_amount") @db.BigInt
+
   status SlotStatus @default(OPEN)
 
   createdAt DateTime  @default(now()) @map("created_at")
