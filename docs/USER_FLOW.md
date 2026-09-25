@@ -214,12 +214,11 @@ Customer không bắt buộc login để browse.
 Customer có thể search bằng:
 
 ```text
-keyword
-category
-date
-minPrice
-maxPrice
-location
+search (title, summary)
+kind (SERVICE hoặc EVENT)
+categoryId hoặc categorySlug
+vendorId (optional)
+page, limit
 ```
 
 System chỉ hiển thị:
@@ -227,6 +226,8 @@ System chỉ hiển thị:
 ```text
 Service.status = PUBLISHED
 Vendor.status = APPROVED
+Category.isActive = true
+Service, Vendor và Category chưa bị soft-delete
 ```
 
 Service bị:
@@ -295,12 +296,14 @@ System trả:
 service
 vendor basic info
 category
-images
-available slots
-price
-review summary
-cancellation information
+kind
+title, summary, description, thumbnail
+priceAmount dạng integer string và currency
+durationMinutes nếu có
 ```
+
+Slot, capacity, booking, event occurrence, gallery và review chưa thuộc catalog
+CRUD này.
 
 ---
 
@@ -1739,22 +1742,34 @@ Vendor.status = APPROVED
 
 ---
 
-# 71. Vendor Service Creation
+# 71. Vendor Service Management
 
-Vendor mở:
+Backend cung cấp:
 
 ```text
-/vendor/services/new
+POST   /api/v1/vendor/services
+GET    /api/v1/vendor/services
+GET    /api/v1/vendor/services/:id
+PATCH  /api/v1/vendor/services/:id
+POST   /api/v1/vendor/services/:id/publish
+POST   /api/v1/vendor/services/:id/hide
+POST   /api/v1/vendor/services/:id/archive
+DELETE /api/v1/vendor/services/:id
 ```
 
-Điền:
+Vendor list hỗ trợ `status`, `kind`, `categoryId`, `search`, `page`, `limit`. Mọi
+management endpoint chỉ thao tác Service thuộc Vendor của authenticated user.
+Create nhận:
 
 ```text
-name
-category
-description
-address
-images
+categoryId
+kind
+title
+summary (optional)
+description (optional)
+thumbnailUrl (optional)
+priceAmount (integer string)
+durationMinutes (optional)
 ```
 
 Initial:
@@ -1772,16 +1787,14 @@ Vendor
 ↓
 Create Draft
 ↓
-Upload Image
-↓
-Create Slots
-↓
-Configure Pricing
-↓
-Review
+Review / edit catalog fields
 ↓
 Publish
 ```
+
+Service xuất hiện ở public `GET /api/v1/services` và
+`GET /api/v1/services/:slug`. Hide loại Service khỏi public catalog; muốn archive
+Service đang published phải hide trước. DRAFT/HIDDEN có thể soft-delete.
 
 ---
 
@@ -1790,21 +1803,20 @@ Publish
 Trước publish:
 
 ```text
-name exists
-description exists
-category exists
-address exists
+title valid
+priceAmount is a non-negative integer in the supported BIGINT range
+category exists, active, not deleted
+category.scope matches service.kind
 vendor approved
-at least one active slot
 ```
 
 Nếu thiếu:
 
 ```text
-400 SERVICE_NOT_READY
+400 Bad Request (hoặc 404 khi Category không tồn tại)
 ```
 
-UI phải chỉ rõ thiếu field nào.
+Slot/capacity/occurrence chưa được kiểm tra ở bước publish vì thuộc task tiếp theo.
 
 ---
 
