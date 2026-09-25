@@ -632,23 +632,40 @@ Fields:
 ```text
 id UUID PK
 
-name VARCHAR UNIQUE NOT NULL
+code VARCHAR(50) UNIQUE NOT NULL
 
-slug VARCHAR UNIQUE NOT NULL
+name VARCHAR(120) NOT NULL
 
-status CATEGORY_STATUS NOT NULL
+slug VARCHAR(150) UNIQUE NOT NULL
 
-created_at TIMESTAMP
+scope CATEGORY_SCOPE NOT NULL
 
-updated_at TIMESTAMP
+description VARCHAR(500) NULL
+
+icon VARCHAR(100) NULL
+
+sort_order INT NOT NULL DEFAULT 0
+
+is_active BOOLEAN NOT NULL DEFAULT TRUE
+
+deleted_at TIMESTAMP NULL
+
+created_at TIMESTAMP NOT NULL
+
+updated_at TIMESTAMP NOT NULL
 ```
 
-Status:
+Scope:
 
 ```text
-ACTIVE
-HIDDEN
+SERVICE
+EVENT
 ```
+
+`code` là machine identifier ổn định, `name` là nhãn hiển thị và `slug` là URL
+identifier được tạo server-side. Rename không tự đổi code/slug. Category hiện là
+flat master data; chưa có parent/subcategory. Deactivate dùng `is_active = false`;
+delete là soft-delete và không xóa physical row.
 
 ---
 
@@ -656,16 +673,17 @@ HIDDEN
 
 ```text
 Category 1
- └── N Services
+ ├── N Services (future)
+ └── N Events (future)
 ```
 
-Một Service:
+Service/Event sau này:
 
 ```text
-belongs to exactly 1 Category
+belongs to exactly 1 Category through category_id
 ```
 
-trong MVP.
+Quan hệ chưa được thêm vào Prisma cho tới khi Service/Event model được triển khai.
 
 ---
 
@@ -2536,6 +2554,8 @@ users.email UNIQUE
 roles.code UNIQUE
 
 vendors.owner_user_id UNIQUE
+
+categories.code UNIQUE
 
 categories.slug UNIQUE
 
