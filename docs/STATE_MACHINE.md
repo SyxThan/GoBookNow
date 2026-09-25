@@ -635,26 +635,23 @@ endpoint riêng và transition sai trả `409 Conflict`. Lần publish đầu ti
 States:
 
 ```text
-AVAILABLE
-DISABLED
+OPEN
 CLOSED
+CANCELLED
 ```
 
-Flow:
+Allowed transitions:
 
 ```text
-AVAILABLE
-  ↓
-DISABLED
+OPEN
+├── CLOSED
+│     ├── OPEN
+│     └── CANCELLED
+└── CANCELLED
 ```
 
-hoặc khi slot đã kết thúc:
-
-```text
-AVAILABLE
-  ↓
-CLOSED
-```
+`CANCELLED` là terminal state. Chỉ Slot chưa bắt đầu mới được `CLOSED -> OPEN`.
+Generic PATCH không thay đổi status; invalid transition trả `409 Conflict`.
 
 ---
 
