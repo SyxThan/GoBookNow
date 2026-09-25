@@ -1665,6 +1665,8 @@ Vendor record active
 User receives VENDOR role
 ↓
 History records PENDING → APPROVED
+↓
+Audit records VENDOR_APPLICATION_APPROVED
 ```
 
 ---
@@ -1713,7 +1715,8 @@ Vendor về `PENDING`; Admin có thể review application mới độc lập.
 
 Admin mở `/admin/vendor-applications`, filter theo status, xem Vendor profile,
 document metadata/download và timeline. Approve cần confirmation. Reject yêu
-cầu lý do không rỗng. Mọi transition được ghi append-only history.
+cầu lý do không rỗng. Mọi transition được ghi append-only history và audit log
+trong cùng transaction. Detail hiển thị actor và audit trail liên quan.
 
 ---
 
@@ -2148,7 +2151,7 @@ hoặc manually provisioned.
 Admin mở:
 
 ```text
-/admin/vendors
+/admin/vendor-applications
 ```
 
 Filter:
@@ -2179,11 +2182,10 @@ Vendor APPROVED
 User gets VENDOR
 ↓
 Audit Log
-↓
-Email Notification
 ```
 
-Transaction nên bảo đảm các thay đổi liên quan nhất quán.
+Transaction bảo đảm application, Vendor, role, domain history và audit log nhất
+quán. Email notification chưa thuộc flow hiện tại.
 
 ---
 
@@ -2368,14 +2370,15 @@ Payload nhạy cảm phải được mask nếu cần.
 Các action bắt buộc log:
 
 ```text
-approve vendor
-reject vendor
+VENDOR_APPLICATION_APPROVED
+VENDOR_APPLICATION_REJECTED
 manual status action if any
 refund handling
 category management
 ```
 
-Audit không được edit bằng UI.
+Admin đọc audit qua `GET /admin/audit-logs` với filter action, entity, actor,
+thời gian và pagination. Audit không được edit hoặc delete bằng UI/API.
 
 ---
 

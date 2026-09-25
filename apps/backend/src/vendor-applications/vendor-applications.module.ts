@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
+import { AuditModule } from '../audit/audit.module.js';
 import { VendorsModule } from '../vendors/vendors.module.js';
 import {
   FileStorageService,
@@ -14,7 +15,7 @@ import {
 import { VendorApplicationsService } from './vendor-applications.service.js';
 
 @Module({
-  imports: [AuthModule, VendorsModule],
+  imports: [AuthModule, AuditModule, VendorsModule],
   controllers: [
     VendorApplicationSubmissionController,
     VendorApplicationsController,

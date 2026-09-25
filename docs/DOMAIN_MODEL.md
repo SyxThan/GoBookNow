@@ -2040,18 +2040,30 @@ id UUID PK
 
 actor_user_id UUID FK NULL
 
-action VARCHAR NOT NULL
+action VARCHAR(100) NOT NULL
 
-entity_type VARCHAR NOT NULL
+entity_type VARCHAR(100) NOT NULL
 
-entity_id UUID NULL
+entity_id VARCHAR(100) NOT NULL
+
+target_user_id UUID NULL
 
 metadata JSONB NULL
 
-ip_address VARCHAR NULL
+ip_address VARCHAR(64) NULL
+
+user_agent VARCHAR(500) NULL
 
 created_at TIMESTAMP NOT NULL
 ```
+
+`actor_user_id` tham chiếu `users.id` với `ON DELETE SET NULL`, để sự kiện vẫn
+được giữ khi tài khoản actor bị xóa. Các index phục vụ điều tra theo actor,
+action, `(entity_type, entity_id)` và thời gian tạo.
+
+`VendorApplicationHistory` là timeline nghiệp vụ của riêng application;
+`AuditLog` là dấu vết quản trị tổng quát. Approve/reject Vendor ghi cả hai trong
+cùng transaction. Audit log là append-only và không có API update/delete.
 
 ---
 

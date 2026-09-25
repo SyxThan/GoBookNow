@@ -12,7 +12,7 @@ export class ApproveVendorApplicationDto {
   @IsOptional()
   @IsString()
   @MaxLength(1000)
-  reviewNote?: string;
+  note?: string;
 }
 
 export class RejectVendorApplicationDto {

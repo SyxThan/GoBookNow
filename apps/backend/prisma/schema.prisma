@@ -69,6 +69,7 @@ model User {
 
   reviewedVendorApplications      VendorApplication[]        @relation("VendorApplicationReviewer")
   vendorApplicationHistoryEntries VendorApplicationHistory[] @relation("VendorApplicationHistoryActor")
+  actorAuditLogs                  AuditLog[]                 @relation("AuditActor")
 
   @@index([status])
   @@index([deletedAt])
@@ -260,4 +261,30 @@ model VendorApplicationHistory {
   @@index([applicationId])
   @@index([changedByUserId])
   @@map("vendor_application_history")
+}
+
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  actorUserId String? @map("actor_user_id") @db.Uuid
+
+  action     String @db.VarChar(100)
+  entityType String @map("entity_type") @db.VarChar(100)
+  entityId   String @map("entity_id") @db.VarChar(100)
+
+  targetUserId String? @map("target_user_id") @db.Uuid
+  metadata     Json?
+
+  ipAddress String? @map("ip_address") @db.VarChar(64)
+  userAgent String? @map("user_agent") @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

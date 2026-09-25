@@ -7,6 +7,9 @@ import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { vi } from 'vitest';
+import { AuditAction, AuditEntityType } from '../src/audit/audit.constants.js';
+import { AuditService } from '../src/audit/audit.service.js';
 import { AuthModule } from '../src/auth/auth.module.js';
 import {
   RoleCode,
@@ -29,6 +32,7 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let jwt: JwtService;
+  let auditService: AuditService;
   const run = randomUUID().slice(0, 8);
   const userIds: string[] = [];
   const vendorIds: string[] = [];
@@ -68,6 +72,7 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
     await app.init();
     prisma = fixture.get(PrismaService);
     jwt = fixture.get(JwtService);
+    auditService = fixture.get(AuditService);
 
     await Promise.all(
       Object.values(RoleCode).map((code) =>
@@ -96,6 +101,12 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
         select: { id: true },
       });
       const applicationIds = applications.map(({ id }) => id);
+      await prisma.auditLog.deleteMany({
+        where: {
+          entityType: AuditEntityType.VENDOR_APPLICATION,
+          entityId: { in: applicationIds },
+        },
+      });
       await prisma.vendorApplicationHistory.deleteMany({
         where: { applicationId: { in: applicationIds } },
       });
@@ -168,7 +179,8 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
     return request(app.getHttpServer())
       .post(`/api/v1/admin/vendor-applications/${id}/approve`)
       .auth(await token(identity), { type: 'bearer' })
-      .send({ reviewNote: 'Verified for marketplace access' })
+      .set('user-agent', 'GoBookNow e2e admin')
+      .send({ note: 'Verified for marketplace access' })
       .expect(status);
   }
 
@@ -181,6 +193,7 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
     return request(app.getHttpServer())
       .post(`/api/v1/admin/vendor-applications/${id}/reject`)
       .auth(await token(identity), { type: 'bearer' })
+      .set('user-agent', 'GoBookNow e2e admin')
       .send({ reason })
       .expect(status);
   }
@@ -360,6 +373,16 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
   });
 
   it('restricts admin review endpoints to ADMIN and requires rejection reason', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/vendor-applications')
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(`/api/v1/admin/vendor-applications/${applicationId}`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(`/api/v1/admin/vendor-applications/${applicationId}/approve`)
+      .send({})
+      .expect(401);
     await approve(owner, applicationId, 403);
     await approve(vendorRoleUser, applicationId, 403);
     await request(app.getHttpServer())
@@ -370,6 +393,18 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
     await request(app.getHttpServer())
       .get('/api/v1/admin/vendor-applications')
       .auth(await token(owner), { type: 'bearer' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/vendor-applications')
+      .auth(await token(vendorRoleUser), { type: 'bearer' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`/api/v1/admin/vendor-applications/${applicationId}`)
+      .auth(await token(owner), { type: 'bearer' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(`/api/v1/admin/vendor-applications/${applicationId}`)
+      .auth(await token(vendorRoleUser), { type: 'bearer' })
       .expect(403);
   });
 
@@ -399,11 +434,33 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
     });
     expect(
       roles.map(({ role }) => role.code).sort((a, b) => a.localeCompare(b)),
-    ).toEqual([
-      RoleCode.CUSTOMER,
-      RoleCode.VENDOR,
-    ]);
+    ).toEqual([RoleCode.CUSTOMER, RoleCode.VENDOR]);
     expect(new Set(roles.map(({ role }) => role.code)).size).toBe(2);
+
+    const audit = await prisma.auditLog.findMany({
+      where: {
+        entityType: AuditEntityType.VENDOR_APPLICATION,
+        entityId: applicationId,
+      },
+    });
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      actorUserId: admin.id,
+      action: AuditAction.VENDOR_APPLICATION_APPROVED,
+      entityType: AuditEntityType.VENDOR_APPLICATION,
+      entityId: applicationId,
+      targetUserId: owner.id,
+      userAgent: 'GoBookNow e2e admin',
+      metadata: {
+        vendorId,
+        applicationId,
+        fromStatus: VendorApplicationStatus.PENDING,
+        toStatus: VendorApplicationStatus.APPROVED,
+        reviewNote: 'Verified for marketplace access',
+      },
+    });
+    expect(audit[0]?.ipAddress).toBeTruthy();
+    expect(JSON.stringify(audit[0]?.metadata)).not.toMatch(/password|token/i);
     await approve(admin, applicationId, 409);
     await reject(admin, applicationId, 'Cannot reverse approval', 409);
     await submit(owner, vendorId, 409);
@@ -460,6 +517,25 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
       VendorApplicationStatus.REJECTED,
     ]);
     expect(oldHistory[1]?.note).toBe('Tax document is unclear');
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: {
+        entityType: AuditEntityType.VENDOR_APPLICATION,
+        entityId: firstId,
+      },
+    });
+    expect(audit).toMatchObject({
+      actorUserId: admin.id,
+      action: AuditAction.VENDOR_APPLICATION_REJECTED,
+      targetUserId: rejectedOwner.id,
+      metadata: {
+        vendorId: rejectedVendor,
+        applicationId: firstId,
+        fromStatus: VendorApplicationStatus.PENDING,
+        toStatus: VendorApplicationStatus.REJECTED,
+        reason: 'Tax document is unclear',
+      },
+    });
   });
 
   it('blocks SUSPENDED Vendors from submission', async () => {
@@ -506,17 +582,150 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
       where: { applicationId: raceApplication },
     });
     expect(transitions).toBe(2);
+    const raceAudit = await prisma.auditLog.findMany({
+      where: {
+        entityType: AuditEntityType.VENDOR_APPLICATION,
+        entityId: raceApplication,
+      },
+      select: { action: true, metadata: true },
+    });
+    expect(raceAudit).toHaveLength(1);
+    expect(raceAudit[0]?.action).toBe(
+      final?.status === VendorApplicationStatus.APPROVED
+        ? AuditAction.VENDOR_APPLICATION_APPROVED
+        : AuditAction.VENDOR_APPLICATION_REJECTED,
+    );
+    expect(raceAudit[0]?.metadata).toMatchObject({
+      toStatus: final?.status,
+    });
+    expect(
+      await prisma.vendorApplicationHistory.findFirst({
+        where: {
+          applicationId: raceApplication,
+          fromStatus: VendorApplicationStatus.PENDING,
+        },
+        select: { toStatus: true },
+      }),
+    ).toEqual({ toStatus: final?.status });
+  });
+
+  it('allows exactly one of two concurrent approvals', async () => {
+    const raceOwner = await createIdentity([RoleCode.CUSTOMER]);
+    const raceVendor = await createVendor(
+      raceOwner,
+      VendorStatus.DRAFT,
+      'Double approval race',
+    );
+    const submitted = await submit(raceOwner, raceVendor);
+    const raceApplication = submitted.body.id as string;
+    const adminToken = await token(admin);
+    const approveRequest = () =>
+      request(app.getHttpServer())
+        .post(`/api/v1/admin/vendor-applications/${raceApplication}/approve`)
+        .auth(adminToken, { type: 'bearer' })
+        .send({});
+
+    const responses = await Promise.all([approveRequest(), approveRequest()]);
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
+      [201, 409],
+    );
+    expect(
+      await prisma.vendorApplicationHistory.count({
+        where: { applicationId: raceApplication },
+      }),
+    ).toBe(2);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          entityType: AuditEntityType.VENDOR_APPLICATION,
+          entityId: raceApplication,
+        },
+      }),
+    ).toBe(1);
+  });
+
+  it('rolls back the entire approval when audit persistence fails', async () => {
+    const rollbackOwner = await createIdentity([RoleCode.CUSTOMER]);
+    const rollbackVendor = await createVendor(
+      rollbackOwner,
+      VendorStatus.DRAFT,
+      'Audit rollback',
+    );
+    const submitted = await submit(rollbackOwner, rollbackVendor);
+    const rollbackApplication = submitted.body.id as string;
+    const createAudit = vi
+      .spyOn(auditService, 'create')
+      .mockRejectedValueOnce(new Error('forced audit failure'));
+
+    await approve(admin, rollbackApplication, 500);
+    createAudit.mockRestore();
+
+    expect(
+      await prisma.vendorApplication.findUnique({
+        where: { id: rollbackApplication },
+        select: { status: true, reviewedAt: true, reviewedByUserId: true },
+      }),
+    ).toEqual({
+      status: VendorApplicationStatus.PENDING,
+      reviewedAt: null,
+      reviewedByUserId: null,
+    });
+    expect(
+      await prisma.vendor.findUnique({
+        where: { id: rollbackVendor },
+        select: { status: true },
+      }),
+    ).toEqual({ status: VendorStatus.PENDING });
+    expect(
+      await prisma.vendorApplicationHistory.count({
+        where: { applicationId: rollbackApplication },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.userRole.count({
+        where: {
+          userId: rollbackOwner.id,
+          role: { code: RoleCode.VENDOR },
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          entityType: AuditEntityType.VENDOR_APPLICATION,
+          entityId: rollbackApplication,
+        },
+      }),
+    ).toBe(0);
   });
 
   it('supports bounded admin list filtering and safe detail', async () => {
     const adminToken = await token(admin);
     const pending = await request(app.getHttpServer())
-      .get('/api/v1/admin/vendor-applications')
+      .get('/api/v1/admin/vendor-applications?page=1&limit=1')
+      .auth(adminToken, { type: 'bearer' })
+      .expect(200);
+    expect(pending.body).toMatchObject({ page: 1, limit: 1 });
+    expect(pending.body.items).toHaveLength(1);
+    expect(pending.body.items[0].status).toBe('PENDING');
+    expect(pending.body.items[0]).toHaveProperty('applicationId');
+    expect(pending.body.items[0].vendor.owner).not.toHaveProperty(
+      'passwordHash',
+    );
+
+    const approved = await request(app.getHttpServer())
+      .get('/api/v1/admin/vendor-applications?status=APPROVED&page=1&limit=100')
       .auth(adminToken, { type: 'bearer' })
       .expect(200);
     expect(
-      pending.body.every(
-        (item: { status: string }) => item.status === 'PENDING',
+      approved.body.items.every(
+        (item: { status: string }) => item.status === 'APPROVED',
+      ),
+    ).toBe(true);
+    expect(
+      approved.body.items.some(
+        (item: { applicationId: string }) =>
+          item.applicationId === applicationId,
       ),
     ).toBe(true);
 
@@ -526,9 +735,72 @@ describe('Vendor onboarding (e2e, PostgreSQL)', () => {
       .expect(200);
     expect(detail.body.vendor).not.toHaveProperty('ownerUserId');
     expect(JSON.stringify(detail.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(detail.body)).not.toContain('tokenHash');
+    await request(app.getHttpServer())
+      .get(`/api/v1/admin/vendor-applications/${randomUUID()}`)
+      .auth(adminToken, { type: 'bearer' })
+      .expect(404);
     await request(app.getHttpServer())
       .get('/api/v1/admin/vendor-applications?status=INVALID')
       .auth(adminToken, { type: 'bearer' })
       .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/vendor-applications?limit=101')
+      .auth(adminToken, { type: 'bearer' })
+      .expect(400);
+  });
+
+  it('exposes filtered, paginated, read-only audit logs only to ADMIN', async () => {
+    const adminToken = await token(admin);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/audit-logs')
+      .expect(401);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/audit-logs')
+      .auth(await token(owner), { type: 'bearer' })
+      .expect(403);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/audit-logs')
+      .auth(await token(vendorRoleUser), { type: 'bearer' })
+      .expect(403);
+
+    const result = await request(app.getHttpServer())
+      .get(
+        `/api/v1/admin/audit-logs?action=${AuditAction.VENDOR_APPLICATION_APPROVED}&entityType=${AuditEntityType.VENDOR_APPLICATION}&actorUserId=${admin.id}&page=1&limit=2`,
+      )
+      .auth(adminToken, { type: 'bearer' })
+      .expect(200);
+    expect(result.body).toMatchObject({ page: 1, limit: 2 });
+    expect(result.body.total).toBeGreaterThanOrEqual(2);
+    expect(result.body.items.length).toBeLessThanOrEqual(2);
+    expect(
+      result.body.items.every(
+        (entry: { action: string; entityType: string }) =>
+          entry.action === AuditAction.VENDOR_APPLICATION_APPROVED &&
+          entry.entityType === AuditEntityType.VENDOR_APPLICATION,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(result.body)).not.toContain('passwordHash');
+    expect(JSON.stringify(result.body)).not.toContain('tokenHash');
+    const timestamps = result.body.items.map((entry: { createdAt: string }) =>
+      new Date(entry.createdAt).getTime(),
+    );
+    expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
+
+    await request(app.getHttpServer())
+      .get(
+        '/api/v1/admin/audit-logs?from=2026-09-25T10:00:00.000Z&to=2026-09-24T10:00:00.000Z',
+      )
+      .auth(adminToken, { type: 'bearer' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/audit-logs/${randomUUID()}`)
+      .auth(adminToken, { type: 'bearer' })
+      .send({ action: 'TAMPERED' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .delete(`/api/v1/admin/audit-logs/${randomUUID()}`)
+      .auth(adminToken, { type: 'bearer' })
+      .expect(404);
   });
 });

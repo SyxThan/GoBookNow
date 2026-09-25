@@ -590,6 +590,8 @@ Application không có trạng thái `DRAFT`. Submit từ Vendor `DRAFT` hoặc
 - Application terminal không được chuyển lại hoặc review lần hai.
 - Review dùng transaction và conditional update nên chỉ một concurrent Admin
   transition có thể thành công.
+- Mỗi transition terminal ghi `VendorApplicationHistory` và generic `AuditLog`
+  trong cùng transaction; nếu ghi audit thất bại thì toàn bộ review rollback.
 
 Nếu rejected:
 
