@@ -35,6 +35,15 @@ const publicVendorSelect = {
   slug: true,
 } as const satisfies Prisma.VendorSelect;
 
+const publicImageSelect = {
+  id: true,
+  url: true,
+  width: true,
+  height: true,
+  sortOrder: true,
+  isPrimary: true,
+} as const satisfies Prisma.ServiceImageSelect;
+
 const serviceResponseSelect = {
   id: true,
   kind: true,
@@ -52,6 +61,15 @@ const serviceResponseSelect = {
   updatedAt: true,
   category: { select: categorySelect },
   vendor: { select: publicVendorSelect },
+  images: {
+    select: publicImageSelect,
+    orderBy: [
+      { isPrimary: 'desc' },
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ],
+  },
 } as const satisfies Prisma.ServiceSelect;
 
 type ServiceRecord = Prisma.ServiceGetPayload<{
