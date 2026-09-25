@@ -768,7 +768,7 @@ Category 1
 
 Service 1
  ├── exactly 1 Category
- ├── N ServiceImages (future)
+ ├── N ServiceImages
  ├── N Slots (future)
  ├── N Reviews (future)
  └── 0..N CancellationPolicies (future)
@@ -807,13 +807,27 @@ id UUID PK
 
 service_id UUID FK
 
-url TEXT NOT NULL
+provider VARCHAR(30) NOT NULL
 
-storage_key VARCHAR NULL
+storage_key VARCHAR(255) UNIQUE NOT NULL
 
-position INT NOT NULL DEFAULT 0
+url VARCHAR(1000) NOT NULL
 
-created_at TIMESTAMP
+original_name VARCHAR(255) NULL
+
+mime_type VARCHAR(100) NOT NULL
+
+file_size INT NOT NULL
+
+width INT NULL
+
+height INT NULL
+
+sort_order INT NOT NULL DEFAULT 0
+
+is_primary BOOLEAN NOT NULL DEFAULT false
+
+created_at TIMESTAMP NOT NULL
 ```
 
 Cardinality:
@@ -823,9 +837,28 @@ Service 1
  └── N Images
 ```
 
+PostgreSQL chỉ lưu URL công khai và metadata; binary được stream trực tiếp từ
+memory tới external object/image storage:
+
+```text
+ServiceImagesService
+  -> FileStorageProvider
+    -> CloudinaryStorageProvider
+```
+
+`storage_key` là identifier nội bộ dùng để xóa remote asset và không xuất hiện
+trong public catalog. Ảnh đầu tiên là primary; mỗi Service có tối đa một primary
+theo business transaction. Khi xóa primary, ảnh có `sort_order` nhỏ nhất rồi cũ
+nhất được chọn thay thế. Gallery tối đa 8 ảnh, hỗ trợ JPEG/PNG/WebP và tối đa 5 MB
+mỗi file.
+
+ServiceImage metadata có thể hard-delete sau khi remote asset đã được xóa. FK dùng
+`ON DELETE CASCADE`, nhưng Service hiện soft-delete để tránh DB cascade tạo orphan
+trên external storage.
+
 Nếu Service bị soft delete:
 
-không cần xóa ngay ảnh nếu còn lịch sử.
+ảnh không còn public; cleanup remote theo lifecycle/reconciliation tương lai.
 
 ---
 
