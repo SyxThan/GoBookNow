@@ -611,31 +611,22 @@ HIDDEN
 ARCHIVED
 ```
 
-Flow phổ biến:
+Allowed transitions:
 
 ```text
 DRAFT
-  ↓
-PUBLISHED
-  ↓
-HIDDEN
+├── PUBLISHED
+│      ↓
+│    HIDDEN
+│      ├── PUBLISHED
+│      └── ARCHIVED
+└── ARCHIVED
 ```
 
-Có thể:
-
-```text
-HIDDEN
-  ↓
-PUBLISHED
-```
-
-hoặc:
-
-```text
-PUBLISHED
-  ↓
-ARCHIVED
-```
+`PUBLISHED -> ARCHIVED` trực tiếp không hợp lệ; Vendor phải hide trước. `ARCHIVED`
+là terminal state. Generic update không được thay đổi status; mỗi transition dùng
+endpoint riêng và transition sai trả `409 Conflict`. Lần publish đầu tiên đặt
+`published_at`; re-publish giữ nguyên timestamp này.
 
 ---
 

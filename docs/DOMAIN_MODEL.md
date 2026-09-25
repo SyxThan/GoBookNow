@@ -673,17 +673,18 @@ delete là soft-delete và không xóa physical row.
 
 ```text
 Category 1
- ├── N Services (future)
- └── N Events (future)
+ └── N Services
 ```
 
-Service/Event sau này:
+Service và Event dùng chung một catalog entity:
 
 ```text
-belongs to exactly 1 Category through category_id
+Service.kind = SERVICE -> Category.scope = SERVICE
+Service.kind = EVENT   -> Category.scope = EVENT
+Service belongs to exactly 1 Category through category_id
 ```
 
-Quan hệ chưa được thêm vào Prisma cho tới khi Service/Event model được triển khai.
+Event schedule/occurrence được tách sang domain availability ở task sau.
 
 ---
 
@@ -708,19 +709,25 @@ vendor_id UUID FK NOT NULL
 
 category_id UUID FK NOT NULL
 
-name VARCHAR NOT NULL
+kind SERVICE_KIND NOT NULL // SERVICE | EVENT
 
-slug VARCHAR UNIQUE NOT NULL
+title VARCHAR(160) NOT NULL
 
-short_description VARCHAR NULL
+slug VARCHAR(200) UNIQUE NOT NULL
+
+summary VARCHAR(300) NULL
 
 description TEXT NULL
 
-address TEXT NULL
+thumbnail_url VARCHAR(500) NULL
 
-location_text VARCHAR NULL
+price_amount BIGINT NOT NULL
 
-status SERVICE_STATUS NOT NULL
+currency VARCHAR(3) NOT NULL DEFAULT 'VND'
+
+duration_minutes INT NULL
+
+status SERVICE_STATUS NOT NULL DEFAULT 'DRAFT'
 
 published_at TIMESTAMP NULL
 
@@ -730,6 +737,12 @@ updated_at TIMESTAMP NOT NULL
 
 deleted_at TIMESTAMP NULL
 ```
+
+`ServiceKind.SERVICE` đại diện dịch vụ đặt lịch; `ServiceKind.EVENT` đại diện
+event/workshop/class. Cả hai dùng cùng CRUD và catalog. `price_amount` là số nguyên
+VND, được nhận và trả ở API dưới dạng chuỗi thập phân để tránh mất precision của
+JavaScript. Slug được tạo server-side, unique toàn hệ thống và không đổi khi sửa
+title.
 
 ---
 
@@ -754,10 +767,11 @@ Category 1
  └── N Services
 
 Service 1
- ├── N ServiceImages
- ├── N Slots
- ├── N Reviews
- └── 0..N CancellationPolicies
+ ├── exactly 1 Category
+ ├── N ServiceImages (future)
+ ├── N Slots (future)
+ ├── N Reviews (future)
+ └── 0..N CancellationPolicies (future)
 ```
 
 ---

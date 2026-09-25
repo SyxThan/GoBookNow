@@ -52,6 +52,18 @@ enum CategoryScope {
   EVENT
 }
 
+enum ServiceKind {
+  SERVICE
+  EVENT
+}
+
+enum ServiceStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
+  ARCHIVED
+}
+
 model Category {
   id String @id @default(uuid()) @db.Uuid
 
@@ -69,6 +81,8 @@ model Category {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
+
+  services Service[]
 
   @@index([scope])
   @@index([scope, isActive])
@@ -219,10 +233,50 @@ model Vendor {
 
   owner        User                @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   applications VendorApplication[]
+  services     Service[]
 
   @@index([status])
   @@index([displayName])
   @@map("vendors")
+}
+
+model Service {
+  id String @id @default(uuid()) @db.Uuid
+
+  vendorId   String @map("vendor_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+
+  kind ServiceKind
+
+  title String @db.VarChar(160)
+  slug  String @unique @db.VarChar(200)
+
+  summary      String? @db.VarChar(300)
+  description  String? @db.Text
+  thumbnailUrl String? @map("thumbnail_url") @db.VarChar(500)
+
+  priceAmount BigInt @map("price_amount") @db.BigInt
+  currency    String @default("VND") @db.VarChar(3)
+
+  durationMinutes Int? @map("duration_minutes")
+
+  status      ServiceStatus @default(DRAFT)
+  publishedAt DateTime?     @map("published_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  vendor   Vendor   @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([vendorId])
+  @@index([categoryId])
+  @@index([kind])
+  @@index([status])
+  @@index([vendorId, status])
+  @@index([categoryId, status])
+  @@map("services")
 }
 
 model VendorApplication {
