@@ -351,18 +351,13 @@ Admin Review
 
 # 10. Category Scope
 
-Admin quản lý category.
+Admin quản lý flat category master data theo hai scope cố định:
 
 Ví dụ:
 
 ```text
-EVENT
-WORKSHOP
-SPA
-SPORT
-CLASS
-GYM
-OTHER
+SERVICE: SPA_BEAUTY, HEALTHCARE, FITNESS, SPORTS, EDUCATION
+EVENT: WORKSHOP, CONFERENCE, ENTERTAINMENT, COMMUNITY
 ```
 
 Category hỗ trợ:
@@ -370,7 +365,11 @@ Category hỗ trợ:
 - Create.
 - Update.
 - Hide.
+- Soft-delete.
 - List.
+
+Public API chỉ trả category active và chưa soft-delete. `code` và `slug` là định
+danh ổn định; Service/Event sau này tham chiếu bằng `category_id`.
 
 Không cần nested category trong MVP.
 

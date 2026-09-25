@@ -47,6 +47,35 @@ enum VendorDocumentType {
   OTHER
 }
 
+enum CategoryScope {
+  SERVICE
+  EVENT
+}
+
+model Category {
+  id String @id @default(uuid()) @db.Uuid
+
+  code  String        @unique @db.VarChar(50)
+  name  String        @db.VarChar(120)
+  slug  String        @unique @db.VarChar(150)
+  scope CategoryScope
+
+  description String? @db.VarChar(500)
+  icon        String? @db.VarChar(100)
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([scope])
+  @@index([scope, isActive])
+  @@index([sortOrder])
+  @@map("categories")
+}
+
 model User {
   id String @id @default(uuid()) @db.Uuid
 

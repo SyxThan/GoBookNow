@@ -297,9 +297,14 @@ export default function AdminVendorApplicationsClient() {
             <p className="eyebrow">GoBook Admin</p>
             <h1 className="mt-3 text-4xl font-semibold">Vendor Applications</h1>
           </div>
-          <Link href="/" className="secondary-button">
-            Trang chủ
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/admin/categories" className="secondary-button">
+              Categories
+            </Link>
+            <Link href="/" className="secondary-button">
+              Trang chủ
+            </Link>
+          </div>
         </header>
         {error && <Banner>{error}</Banner>}
         <div className="mt-8 flex flex-wrap gap-2">
