@@ -11,8 +11,14 @@ import {
   VendorStatus,
   type VendorDocumentType,
 } from '../generated/prisma/client.js';
+import { AuditAction, AuditEntityType } from '../audit/audit.constants.js';
+import {
+  AuditService,
+  type AuditRequestMetadata,
+} from '../audit/audit.service.js';
 import { RoleCode } from '../auth/constants/role.constants.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import type { ListVendorApplicationsDto } from './dto/list-applications.dto.js';
 import type { ApproveVendorApplicationDto } from './dto/review-application.dto.js';
 import {
   MAX_DOCUMENTS_PER_APPLICATION,
@@ -91,6 +97,7 @@ export class VendorApplicationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: FileStorageService,
+    private readonly auditService: AuditService,
   ) {}
 
   async submit(
@@ -260,24 +267,52 @@ export class VendorApplicationsService {
     });
   }
 
-  listForAdmin(
-    status: VendorApplicationStatus = VendorApplicationStatus.PENDING,
-  ) {
-    return this.prisma.vendorApplication.findMany({
-      where: { status, vendor: { deletedAt: null } },
-      orderBy: { submittedAt: 'asc' },
-      take: 100,
-      select: {
-        id: true,
-        status: true,
-        submittedAt: true,
-        reviewedAt: true,
-        reviewNote: true,
-        vendor: {
-          select: { id: true, displayName: true, slug: true, status: true },
+  async listForAdmin(query: ListVendorApplicationsDto) {
+    const status = query.status ?? VendorApplicationStatus.PENDING;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const where: Prisma.VendorApplicationWhereInput = {
+      status,
+      vendor: { deletedAt: null },
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.vendorApplication.findMany({
+        where,
+        orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          submittedAt: true,
+          reviewedAt: true,
+          vendor: {
+            select: {
+              id: true,
+              displayName: true,
+              legalName: true,
+              vendorType: true,
+              taxCode: true,
+              owner: {
+                select: {
+                  id: true,
+                  email: true,
+                  profile: { select: { fullName: true } },
+                },
+              },
+            },
+          },
         },
-      },
-    });
+      }),
+      this.prisma.vendorApplication.count({ where }),
+    ]);
+    return {
+      items: rows.map(({ id, ...item }) => ({ applicationId: id, ...item })),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findAdminDetail(applicationId: string) {
@@ -285,7 +320,26 @@ export class VendorApplicationsService {
       where: { id: applicationId },
       select: {
         ...applicationSelect,
-        vendor: { select: adminVendorSelect },
+        reviewedByUserId: true,
+        reviewer: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true } },
+          },
+        },
+        vendor: {
+          select: {
+            ...adminVendorSelect,
+            owner: {
+              select: {
+                id: true,
+                email: true,
+                profile: { select: { fullName: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!application)
@@ -297,22 +351,30 @@ export class VendorApplicationsService {
     applicationId: string,
     adminUserId: string,
     dto: ApproveVendorApplicationDto,
+    requestMetadata: AuditRequestMetadata,
   ) {
     await this.review(
       applicationId,
       adminUserId,
       VendorApplicationStatus.APPROVED,
-      dto.reviewNote,
+      dto.note,
+      requestMetadata,
     );
     return this.findAdminDetail(applicationId);
   }
 
-  async reject(applicationId: string, adminUserId: string, reason: string) {
+  async reject(
+    applicationId: string,
+    adminUserId: string,
+    reason: string,
+    requestMetadata: AuditRequestMetadata,
+  ) {
     await this.review(
       applicationId,
       adminUserId,
       VendorApplicationStatus.REJECTED,
       reason,
+      requestMetadata,
     );
     return this.findAdminDetail(applicationId);
   }
@@ -322,6 +384,7 @@ export class VendorApplicationsService {
     adminUserId: string,
     toStatus: 'APPROVED' | 'REJECTED',
     note?: string,
+    requestMetadata: AuditRequestMetadata = {},
   ): Promise<void> {
     await this.prisma.$transaction(async (transaction) => {
       const application = await transaction.vendorApplication.findUnique({
@@ -404,6 +467,36 @@ export class VendorApplicationsService {
           note: note ?? null,
         },
       });
+
+      const approved = toStatus === VendorApplicationStatus.APPROVED;
+      await this.auditService.create(
+        {
+          actorUserId: adminUserId,
+          action: approved
+            ? AuditAction.VENDOR_APPLICATION_APPROVED
+            : AuditAction.VENDOR_APPLICATION_REJECTED,
+          entityType: AuditEntityType.VENDOR_APPLICATION,
+          entityId: applicationId,
+          targetUserId: application.vendor.ownerUserId,
+          metadata: approved
+            ? {
+                vendorId: application.vendorId,
+                applicationId,
+                fromStatus: VendorApplicationStatus.PENDING,
+                toStatus,
+                reviewNote: note ?? null,
+              }
+            : {
+                vendorId: application.vendorId,
+                applicationId,
+                fromStatus: VendorApplicationStatus.PENDING,
+                toStatus,
+                reason: note ?? null,
+              },
+          ...requestMetadata,
+        },
+        transaction,
+      );
     });
   }
 

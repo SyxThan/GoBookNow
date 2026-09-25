@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  Req,
   Res,
   StreamableFile,
   UploadedFile,
@@ -22,7 +23,8 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import type { AuditRequestMetadata } from '../audit/audit.service.js';
 import { RoleCode } from '../auth/constants/role.constants.js';
 import { CurrentUserDecorator } from '../auth/decorators/current-user.decorator.js';
 import { RequireOwnership } from '../auth/decorators/ownership.decorator.js';
@@ -48,6 +50,13 @@ import { VendorApplicationOwnershipResolver } from './vendor-application-ownersh
 import { VendorApplicationsService } from './vendor-applications.service.js';
 
 const uuid = () => new ParseUUIDPipe({ version: '4' });
+
+function auditRequestMetadata(request: Request): AuditRequestMetadata {
+  return {
+    ipAddress: request.ip?.slice(0, 64) ?? null,
+    userAgent: request.get('user-agent')?.slice(0, 500) ?? null,
+  };
+}
 
 @ApiTags('Vendor Applications')
 @ApiBearerAuth(SWAGGER_ACCESS_TOKEN_SECURITY)
@@ -193,7 +202,7 @@ export class AdminVendorApplicationsController {
 
   @Get()
   list(@Query() query: ListVendorApplicationsDto) {
-    return this.service.listForAdmin(query.status);
+    return this.service.listForAdmin(query);
   }
 
   @Get(':id')
@@ -206,8 +215,14 @@ export class AdminVendorApplicationsController {
     @Param('id', uuid()) applicationId: string,
     @CurrentUserDecorator() admin: CurrentUser,
     @Body() dto: ApproveVendorApplicationDto,
+    @Req() request: Request,
   ) {
-    return this.service.approve(applicationId, admin.id, dto);
+    return this.service.approve(
+      applicationId,
+      admin.id,
+      dto,
+      auditRequestMetadata(request),
+    );
   }
 
   @Post(':id/reject')
@@ -215,7 +230,13 @@ export class AdminVendorApplicationsController {
     @Param('id', uuid()) applicationId: string,
     @CurrentUserDecorator() admin: CurrentUser,
     @Body() dto: RejectVendorApplicationDto,
+    @Req() request: Request,
   ) {
-    return this.service.reject(applicationId, admin.id, dto.reason);
+    return this.service.reject(
+      applicationId,
+      admin.id,
+      dto.reason,
+      auditRequestMetadata(request),
+    );
   }
 }
