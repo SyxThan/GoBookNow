@@ -9,6 +9,7 @@ import { CategoriesModule } from './categories/categories.module.js';
 import { PrismaModule } from './database/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ServicesModule } from './services/services.module.js';
+import { SlotsModule } from './slots/slots.module.js';
 import { VendorApplicationsModule } from './vendor-applications/vendor-applications.module.js';
 import { VendorsModule } from './vendors/vendors.module.js';
 
@@ -25,6 +26,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     CategoriesModule,
     HealthModule,
     ServicesModule,
+    SlotsModule,
     VendorsModule,
     VendorApplicationsModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error

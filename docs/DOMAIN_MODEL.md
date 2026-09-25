@@ -769,7 +769,7 @@ Category 1
 Service 1
  ├── exactly 1 Category
  ├── N ServiceImages
- ├── N Slots (future)
+ ├── N Slots
  ├── N Reviews (future)
  └── 0..N CancellationPolicies (future)
 ```
@@ -872,7 +872,7 @@ slots
 
 ## Responsibility
 
-Đại diện tài nguyên có thể đặt trong một khoảng thời gian.
+Đại diện một occurrence/booking window cụ thể của Service hoặc Event.
 
 Fields:
 
@@ -881,19 +881,17 @@ id UUID PK
 
 service_id UUID FK NOT NULL
 
-start_time TIMESTAMP NOT NULL
+start_at TIMESTAMPTZ(3) NOT NULL
 
-end_time TIMESTAMP NOT NULL
+end_at TIMESTAMPTZ(3) NOT NULL
 
 capacity INT NOT NULL
 
-price BIGINT NOT NULL
+status SLOT_STATUS NOT NULL DEFAULT 'OPEN'
 
-status SLOT_STATUS NOT NULL
+created_at TIMESTAMP NOT NULL
 
-created_at TIMESTAMP
-
-updated_at TIMESTAMP
+updated_at TIMESTAMP NOT NULL
 
 deleted_at TIMESTAMP NULL
 ```
@@ -903,9 +901,9 @@ deleted_at TIMESTAMP NULL
 # 27. Slot Status
 
 ```text
-AVAILABLE
-DISABLED
+OPEN
 CLOSED
+CANCELLED
 ```
 
 ---
@@ -915,12 +913,22 @@ CLOSED
 Database/application constraint:
 
 ```text
-start_time < end_time
+start_at < end_at (PostgreSQL CHECK)
 
-capacity > 0
+capacity BETWEEN 1 AND 100000 (PostgreSQL CHECK)
 
-price >= 0
+Service.kind = SERVICE và duration_minutes != null:
+end_at - start_at = duration_minutes
 ```
+
+Create yêu cầu `start_at > now`. Hai Slot active của cùng Service không được
+overlap theo điều kiện `existing.start_at < requested.end_at AND existing.end_at
+> requested.start_at`. `OPEN` và `CLOSED` đều giữ time range; `CANCELLED` và
+soft-deleted Slot không chặn range. Back-to-back được phép.
+
+Application serialize create/update theo Service để tránh race giữa các API write.
+Database chưa có exclusion constraint, nên direct/out-of-band database writes vẫn
+phải tự tuân thủ overlap invariant.
 
 ---
 
@@ -931,18 +939,20 @@ Service 1
  └── N Slots
 
 Slot 1
- ├── N BookingItems
- └── N Reservations
+ ├── N BookingItems (future)
+ └── N Reservations (future)
 ```
 
 ---
 
 # 30. Slot Capacity Design
 
-Không nhất thiết lưu:
+Không lưu:
 
 ```text
 available_capacity
+remaining_capacity
+booked_count
 ```
 
 vì dễ bị lệch dữ liệu.
@@ -959,7 +969,9 @@ confirmed quantity
 active reservation quantity
 ```
 
-Nếu cần optimization sau này mới denormalize.
+`capacity` chỉ là maximum bookable capacity. Công thức remaining chỉ được triển
+khai khi Reservation/Booking trở thành source of truth; API Slot hiện không trả số
+ghế còn lại giả bằng capacity. Nếu cần optimization sau này mới denormalize.
 
 ---
 
@@ -2648,9 +2660,10 @@ services(slug)
 
 ```text
 slots(service_id)
-slots(start_time)
-slots(service_id, start_time)
+slots(start_at)
+slots(service_id, start_at)
 slots(status)
+slots(service_id, status, start_at)
 ```
 
 ## Bookings
@@ -2921,9 +2934,9 @@ vendor.status = APPROVED
 Slot bookable khi:
 
 ```text
-status = AVAILABLE
+status = OPEN
 
-start_time > now
+end_at > now
 
 Service = PUBLISHED
 

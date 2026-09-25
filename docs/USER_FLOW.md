@@ -345,12 +345,15 @@ GET /services/{serviceId}/slots
 System chỉ trả:
 
 ```text
-future slot
-AVAILABLE
-not disabled
+Slot.status = OPEN
+Slot.deletedAt = null
+Slot.endAt > now
+Service.status = PUBLISHED
+Vendor.status = APPROVED
 ```
 
-Available quantity:
+API trả `capacity` là sức chứa tối đa. Không trả `remainingCapacity = capacity`.
+Số chỗ còn lại chỉ được tính sau khi Reservation/Booking được triển khai:
 
 ```text
 capacity
@@ -1862,9 +1865,20 @@ Set End
 ↓
 Set Capacity
 ↓
-Set Price
-↓
 Save
+```
+
+Backend management API:
+
+```text
+POST   /api/v1/vendor/services/:serviceId/slots
+GET    /api/v1/vendor/services/:serviceId/slots
+GET    /api/v1/vendor/services/:serviceId/slots/:slotId
+PATCH  /api/v1/vendor/services/:serviceId/slots/:slotId
+POST   /api/v1/vendor/services/:serviceId/slots/:slotId/close
+POST   /api/v1/vendor/services/:serviceId/slots/:slotId/open
+POST   /api/v1/vendor/services/:serviceId/slots/:slotId/cancel
+DELETE /api/v1/vendor/services/:serviceId/slots/:slotId
 ```
 
 ---
@@ -1874,51 +1888,26 @@ Save
 ```text
 start < end
 start > current time
-capacity > 0
-price >= 0
+1 <= capacity <= 100000
+SERVICE duration phải khớp durationMinutes nếu đã cấu hình
+không overlap OPEN/CLOSED Slot của cùng Service
 ```
 
 ---
 
 # 77. Slot Update Rule
 
-Nếu:
-
-```text
-confirmed quantity = 8
-```
-
-Vendor không được set:
-
-```text
-capacity = 5
-```
-
-Response:
-
-```text
-409 CAPACITY_BELOW_CONFIRMED
-```
+Chỉ Slot chưa bắt đầu và chưa `CANCELLED` mới được sửa `startAt`, `endAt` hoặc
+`capacity`. Thay đổi time phải validate lại duration và overlap. Rule capacity so
+với confirmed/reserved quantity được hoãn tới Reservation/Booking task.
 
 ---
 
 # 78. Slot Deletion Rule
 
-Slot chưa có booking:
-
-```text
-hard delete possible
-```
-
-nhưng khuyên vẫn soft delete.
-
-Slot đã có booking:
-
-```text
-DISABLED
-```
-
-Không xóa lịch sử.
+Slot chỉ được soft-delete khi `startAt > now`; row vẫn được giữ với `deletedAt`.
+Booking chưa tồn tại trong scope hiện tại, nên chưa có relation/history để kiểm
+tra. Task Reservation/Booking sau phải bổ sung bảo vệ lịch sử.
 
 ---
 
