@@ -13,6 +13,9 @@ export default function Home() {
           dựng gian hàng của bạn.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
+          <Link href="/services" className="light-button inline-flex">
+            Khám phá dịch vụ
+          </Link>
           <Link href="/vendor/profile" className="primary-button inline-flex">
             Mở Vendor Profile
           </Link>

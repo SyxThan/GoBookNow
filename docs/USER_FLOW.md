@@ -214,10 +214,13 @@ Customer không bắt buộc login để browse.
 Customer có thể search bằng:
 
 ```text
-search (title, summary)
+q (title, summary, Vendor display name)
 kind (SERVICE hoặc EVENT)
 categoryId hoặc categorySlug
 vendorId (optional)
+from, to (ISO timestamp)
+minPrice, maxPrice (non-negative integer string)
+province, district, ward
 page, limit
 ```
 
@@ -239,6 +242,51 @@ ARCHIVED
 ```
 
 không xuất hiện trong public search.
+
+`categoryId` và `categorySlug` không được gửi cùng nhau. `page` mặc định là 1,
+`limit` mặc định là 20 và tối đa 100. Kết quả sắp xếp ổn định theo
+`publishedAt DESC, id DESC`; `total` và pagination luôn đếm Service riêng biệt,
+không đếm các Slot join được.
+
+## Availability và date range
+
+Khi có `from` hoặc `to`, Service chỉ match nếu tồn tại cùng một Slot thỏa:
+
+```text
+Slot.status = OPEN
+Slot.deletedAt IS NULL
+Slot.endAt > now
+slot.startAt < to       (nếu có to)
+slot.endAt > from       (nếu có from)
+```
+
+Hai điều kiện cuối là interval intersection. Vì vậy Slot bắt đầu trước `from`
+nhưng còn kéo dài vào requested range vẫn match; hai khoảng back-to-back không
+overlap. `from` phải nhỏ hơn `to` khi gửi cả hai.
+
+## Effective price
+
+Giá dùng trong search là:
+
+```text
+effectivePrice = Slot.priceAmount ?? Service.priceAmount
+```
+
+`NULL` kế thừa giá Service, còn `0` là giá miễn phí hợp lệ. Nếu có date và price
+filter, date intersection và effective-price range phải được thỏa bởi **cùng một
+Slot**. Nếu chỉ có price filter, search yêu cầu một future OPEN Slot trong range;
+Service chưa có lịch không match price search. Browse không có date/price vẫn có
+thể hiển thị Service chưa có lịch và dùng base price làm `startingPrice`.
+
+`startingPrice` là minimum effective price trong các Slot áp dụng cho request;
+nếu browse cho phép Service không có Slot thì fallback về base price. API serialize
+mọi monetary amount thành string và có thể trả `nextAvailableSlot` sớm nhất.
+
+## Location limitation
+
+`province`, `district`, `ward` là contains match không phân biệt hoa/thường trên
+địa chỉ business của Vendor. Đây không phải vị trí GPS của Customer, branch-level
+location, khoảng cách theo km hay nearest-service search. MVP không dùng PostGIS.
 
 ---
 
