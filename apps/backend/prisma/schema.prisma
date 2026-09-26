@@ -70,6 +70,25 @@ enum SlotStatus {
   CANCELLED
 }
 
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  HELD
+  CONFIRMED
+  EXPIRED
+  RELEASED
+}
+
+enum PricingSource {
+  SERVICE
+  SLOT
+}
+
 model Category {
   id String @id @default(uuid()) @db.Uuid
 
@@ -115,6 +134,7 @@ model User {
   vendor        Vendor?
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
+  bookings      Booking[]
 
   reviewedVendorApplications      VendorApplication[]        @relation("VendorApplicationReviewer")
   vendorApplicationHistoryEntries VendorApplicationHistory[] @relation("VendorApplicationHistoryActor")
@@ -240,6 +260,7 @@ model Vendor {
   owner        User                @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   applications VendorApplication[]
   services     Service[]
+  bookings     Booking[]
 
   @@index([status])
   @@index([displayName])
@@ -273,10 +294,11 @@ model Service {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  vendor   Vendor         @relation(fields: [vendorId], references: [id], onDelete: Restrict)
-  category Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  images   ServiceImage[]
-  slots    Slot[]
+  vendor       Vendor         @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  category     Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images       ServiceImage[]
+  slots        Slot[]
+  bookingItems BookingItem[]
 
   @@index([vendorId])
   @@index([categoryId])
@@ -304,7 +326,9 @@ model Slot {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  bookingItems BookingItem[]
+  reservations Reservation[]
 
   @@index([serviceId])
   @@index([serviceId, startAt])
@@ -430,4 +454,104 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model Booking {
+  id String @id @default(uuid()) @db.Uuid
+
+  bookingCode String @unique @map("booking_code") @db.VarChar(30)
+
+  customerId String @map("customer_id") @db.Uuid
+  vendorId   String @map("vendor_id") @db.Uuid
+
+  status BookingStatus @default(PENDING_PAYMENT)
+
+  currency String @default("VND") @db.VarChar(3)
+
+  subtotalAmount BigInt @map("subtotal_amount") @db.BigInt
+  totalAmount    BigInt @map("total_amount") @db.BigInt
+
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3)
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  expiredAt   DateTime? @map("expired_at") @db.Timestamptz(3)
+
+  idempotencyKey String? @map("idempotency_key") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  customer User   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  items BookingItem[]
+
+  @@unique([customerId, idempotencyKey])
+  @@index([customerId, createdAt])
+  @@index([customerId, status])
+  @@index([vendorId, createdAt])
+  @@index([vendorId, status])
+  @@index([status])
+  @@map("bookings")
+}
+
+model BookingItem {
+  id String @id @default(uuid()) @db.Uuid
+
+  bookingId String @map("booking_id") @db.Uuid
+  serviceId String @map("service_id") @db.Uuid
+  slotId    String @map("slot_id") @db.Uuid
+
+  quantity Int
+
+  unitPriceAmount BigInt @map("unit_price_amount") @db.BigInt
+  subtotalAmount  BigInt @map("subtotal_amount") @db.BigInt
+
+  currency String @default("VND") @db.VarChar(3)
+
+  pricingSource PricingSource @map("pricing_source")
+
+  serviceTitleSnapshot String   @map("service_title_snapshot") @db.VarChar(160)
+  slotStartAtSnapshot  DateTime @map("slot_start_at_snapshot") @db.Timestamptz(3)
+  slotEndAtSnapshot    DateTime @map("slot_end_at_snapshot") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  slot    Slot    @relation(fields: [slotId], references: [id], onDelete: Restrict)
+
+  reservation Reservation?
+
+  @@index([bookingId])
+  @@index([serviceId])
+  @@index([slotId])
+  @@map("booking_items")
+}
+
+model Reservation {
+  id String @id @default(uuid()) @db.Uuid
+
+  bookingItemId String @unique @map("booking_item_id") @db.Uuid
+  slotId        String @map("slot_id") @db.Uuid
+
+  quantity Int
+
+  status ReservationStatus @default(HELD)
+
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(3)
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  releasedAt  DateTime? @map("released_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Cascade)
+  slot        Slot        @relation(fields: [slotId], references: [id], onDelete: Restrict)
+
+  @@index([slotId])
+  @@index([slotId, status])
+  @@index([slotId, status, expiresAt])
+  @@index([status, expiresAt])
+  @@map("reservations")
 }

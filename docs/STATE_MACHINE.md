@@ -1000,3 +1000,89 @@ IDEMPOTENCY
 để các trạng thái luôn đồng bộ và không phát sinh lỗi booking hoặc thanh toán.
 
 Đây là State Machine chính thức cho **GoBook MVP v1.0.0**.
+
+---
+
+# 29. Booking Schema Foundation Update
+
+Migration `booking_schema` implements the current Booking foundation with a
+smaller state surface than the broader MVP design above. Runtime payment,
+ticket, refund, completion, and hold worker behavior remain future tasks.
+
+## Booking states currently represented in schema
+
+```text
+PENDING_PAYMENT
+CONFIRMED
+EXPIRED
+CANCELLED
+```
+
+Allowed transitions:
+
+```text
+PENDING_PAYMENT
+├── CONFIRMED
+├── EXPIRED
+└── CANCELLED
+
+CONFIRMED
+└── CANCELLED
+```
+
+Terminal for this foundation:
+
+```text
+EXPIRED
+CANCELLED
+```
+
+Disallowed:
+
+```text
+EXPIRED -> CONFIRMED
+CANCELLED -> CONFIRMED
+CONFIRMED -> PENDING_PAYMENT
+```
+
+Generic PATCH must not set `Booking.status` directly. Future code should expose
+intentful operations such as confirm, expire, and cancel.
+
+## Reservation states currently represented in schema
+
+```text
+HELD
+CONFIRMED
+EXPIRED
+RELEASED
+```
+
+Allowed transitions:
+
+```text
+HELD
+├── CONFIRMED
+├── EXPIRED
+└── RELEASED
+
+CONFIRMED
+└── RELEASED
+```
+
+Terminal:
+
+```text
+EXPIRED
+RELEASED
+```
+
+Disallowed:
+
+```text
+EXPIRED -> CONFIRMED
+RELEASED -> HELD
+CONFIRMED -> HELD
+```
+
+`Reservation.CONFIRMED` still exists after payment because Reservation
+represents capacity allocation, not only a temporary cache-style hold.
