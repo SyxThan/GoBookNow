@@ -1,7 +1,11 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 
-type ErrorPayload = { message?: string | string[] };
+type ErrorPayload = {
+  code?: string;
+  message?: string | string[];
+  slotId?: string;
+};
 type AccessTokenPayload = { accessToken: string };
 
 export type ServiceKind = "SERVICE" | "EVENT";
@@ -81,10 +85,101 @@ export type PaymentResult = {
   expiresAt: string | null;
 };
 
+export type PublicServiceDetail = {
+  id: string;
+  kind: ServiceKind;
+  title: string;
+  slug: string;
+  summary: string | null;
+  description: string | null;
+  thumbnailUrl: string | null;
+  priceAmount: string;
+  currency: string;
+  durationMinutes: number | null;
+  status: "PUBLISHED";
+  category: {
+    id: string;
+    code: string;
+    name: string;
+    slug: string;
+  };
+  vendor: {
+    id: string;
+    displayName: string;
+    slug: string;
+    province: string | null;
+    district: string | null;
+    ward: string | null;
+  };
+  images: Array<{
+    id: string;
+    url: string;
+    width: number | null;
+    height: number | null;
+    sortOrder: number;
+    isPrimary: boolean;
+  }>;
+};
+
+export type PublicSlot = {
+  id: string;
+  startAt: string;
+  endAt: string;
+  capacity: number;
+  status: "OPEN" | "CLOSED" | "CANCELLED";
+  price: {
+    amount: string;
+    currency: string;
+    source: "SERVICE" | "SLOT";
+  };
+};
+
+export type PublicSlotResponse = {
+  items: PublicSlot[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type CreateBookingHoldItem = {
+  slotId: string;
+  quantity: number;
+};
+
+export type BookingHoldResponse = {
+  id: string;
+  bookingCode: string;
+  status: "PENDING_PAYMENT";
+  currency: string;
+  subtotalAmount: string;
+  totalAmount: string;
+  expiresAt: string | null;
+  items: Array<{
+    id: string;
+    serviceId: string;
+    slotId: string;
+    serviceTitle: string;
+    startAt: string;
+    endAt: string;
+    quantity: number;
+    unitPriceAmount: string;
+    subtotalAmount: string;
+    pricingSource: "SERVICE" | "SLOT";
+    reservation: {
+      id: string;
+      status: "HELD" | "CONFIRMED" | "RELEASED" | "EXPIRED";
+      expiresAt: string | null;
+    };
+  }>;
+};
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code?: string,
+    public readonly details?: { slotId?: string },
   ) {
     super(message);
     this.name = "ApiError";
@@ -105,6 +200,8 @@ async function readError(response: Response): Promise<ApiError> {
   return new ApiError(
     response.status,
     message ?? `Request failed with status ${response.status}`,
+    payload?.code,
+    payload?.slotId ? { slotId: payload.slotId } : undefined,
   );
 }
 
@@ -137,6 +234,23 @@ export function listPublicCategories(
   signal?: AbortSignal,
 ): Promise<PublicCategory[]> {
   return publicGet<PublicCategory[]>("/categories", signal);
+}
+
+export function getPublicService(
+  slug: string,
+  signal?: AbortSignal,
+): Promise<PublicServiceDetail> {
+  return publicGet<PublicServiceDetail>(`/services/${encodeURIComponent(slug)}`, signal);
+}
+
+export function listPublicSlots(
+  serviceId: string,
+  signal?: AbortSignal,
+): Promise<PublicSlotResponse> {
+  return publicGet<PublicSlotResponse>(
+    `/services/${encodeURIComponent(serviceId)}/slots?limit=100`,
+    signal,
+  );
 }
 
 async function refreshAccessToken(): Promise<string> {
@@ -201,6 +315,26 @@ export async function apiRequest<T>(
   if (!response.ok) throw await readError(response);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export function createBookingHold(
+  input: {
+    idempotencyKey: string;
+    items: CreateBookingHoldItem[];
+  },
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<BookingHoldResponse> {
+  return apiRequest<BookingHoldResponse>(
+    "/bookings/hold",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": input.idempotencyKey },
+      body: JSON.stringify({ items: input.items }),
+    },
+    accessToken,
+    onToken,
+  );
 }
 
 export async function apiDownload(

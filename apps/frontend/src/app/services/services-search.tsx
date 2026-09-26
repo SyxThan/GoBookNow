@@ -19,6 +19,7 @@ import {
   type ServiceSearchQuery,
   type ServiceSearchResponse,
 } from "@/lib/api-client";
+import { formatDateTime, formatMoney, locationLabel } from "@/lib/format";
 
 const DEFAULT_LIMIT = 12;
 const FILTER_KEYS = [
@@ -52,21 +53,6 @@ function localDateTime(value: string | null): string {
   if (Number.isNaN(date.getTime())) return "";
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function formatMoney(amount: string): string {
-  return `${new Intl.NumberFormat("vi-VN").format(BigInt(amount))} ₫`;
-}
-
-function formatSlot(value: string): string {
-  return new Intl.DateTimeFormat("vi-VN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function locationLabel(district: string | null, province: string | null) {
-  return [district, province].filter(Boolean).join(", ") || "Địa điểm đang cập nhật";
 }
 
 export function ServicesSearch() {
@@ -358,7 +344,7 @@ export function ServicesSearch() {
                   {result.items.map((service) => (
                     <article
                       key={service.id}
-                      className="group overflow-hidden rounded-3xl border border-white/10 bg-slate-900 transition hover:-translate-y-1 hover:border-teal-300/40"
+                      className="group relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 transition hover:-translate-y-1 hover:border-teal-300/40"
                     >
                       <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
                         {service.thumbnail ? (
@@ -384,7 +370,12 @@ export function ServicesSearch() {
                           {service.category.name}
                         </p>
                         <h2 className="mt-2 line-clamp-2 text-xl font-semibold text-white">
-                          {service.title}
+                          <Link
+                            href={`/services/${encodeURIComponent(service.slug)}`}
+                            className="rounded outline-none after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-teal-300"
+                          >
+                            {service.title}
+                          </Link>
                         </h2>
                         <p className="mt-2 truncate text-sm text-slate-400">
                           {service.vendor.displayName} ·{" "}
@@ -396,9 +387,15 @@ export function ServicesSearch() {
                           </p>
                           <p className="mt-1 text-xs text-slate-500">
                             {service.nextAvailableSlot
-                              ? `Lịch gần nhất: ${formatSlot(service.nextAvailableSlot.startAt)}`
+                              ? `Lịch gần nhất: ${formatDateTime(service.nextAvailableSlot.startAt)}`
                               : "Lịch đang được cập nhật"}
                           </p>
+                          <Link
+                            href={`/services/${encodeURIComponent(service.slug)}`}
+                            className="relative z-10 mt-4 inline-flex text-sm font-semibold text-teal-300 hover:text-teal-200"
+                          >
+                            Xem lịch trống →
+                          </Link>
                         </div>
                       </div>
                     </article>
