@@ -11,6 +11,7 @@ import {
   Prisma,
   ServiceKind,
   ServiceStatus,
+  SlotStatus,
   VendorStatus,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
@@ -36,6 +37,9 @@ const publicVendorSelect = {
   id: true,
   displayName: true,
   slug: true,
+  province: true,
+  district: true,
+  ward: true,
 } as const satisfies Prisma.VendorSelect;
 
 const publicImageSelect = {
@@ -89,6 +93,32 @@ type PaginatedServices = {
   limit: number;
   total: number;
   totalPages: number;
+};
+
+const searchSlotSelect = {
+  id: true,
+  serviceId: true,
+  startAt: true,
+  endAt: true,
+  priceAmount: true,
+} as const satisfies Prisma.SlotSelect;
+
+type SearchSlotRecord = Prisma.SlotGetPayload<{
+  select: typeof searchSlotSelect;
+}>;
+
+export type PublicServiceSearchItem = ServiceResponse & {
+  thumbnail: { url: string } | null;
+  startingPrice: { amount: string; currency: string };
+  nextAvailableSlot: {
+    id: string;
+    startAt: Date;
+    endAt: Date;
+  } | null;
+};
+
+type PaginatedPublicServices = Omit<PaginatedServices, 'items'> & {
+  items: PublicServiceSearchItem[];
 };
 
 @Injectable()
@@ -285,9 +315,49 @@ export class ServicesService {
     );
   }
 
-  listPublic(query: PublicServiceQueryDto): Promise<PaginatedServices> {
+  async listPublic(
+    query: PublicServiceQueryDto,
+  ): Promise<PaginatedPublicServices> {
+    if (query.categoryId && query.categorySlug) {
+      throw new BadRequestException(
+        'categoryId and categorySlug cannot be used together',
+      );
+    }
+    if (query.q && query.search) {
+      throw new BadRequestException('q and search cannot be used together');
+    }
+
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+    const now = new Date();
+    const from = query.from ? new Date(query.from) : undefined;
+    const to = query.to ? new Date(query.to) : undefined;
+    if (from && to && from >= to) {
+      throw new BadRequestException('from must be before to');
+    }
+
+    const minPrice = this.parseSearchPrice(query.minPrice, 'minPrice');
+    const maxPrice = this.parseSearchPrice(query.maxPrice, 'maxPrice');
+    if (
+      minPrice !== undefined &&
+      maxPrice !== undefined &&
+      minPrice > maxPrice
+    ) {
+      throw new BadRequestException('minPrice must not exceed maxPrice');
+    }
+
+    const slotWhere = this.searchSlotWhere(
+      now,
+      from,
+      to,
+      minPrice,
+      maxPrice,
+    );
+    const filtersBySlot =
+      from !== undefined ||
+      to !== undefined ||
+      minPrice !== undefined ||
+      maxPrice !== undefined;
     const where: Prisma.ServiceWhereInput = {
       deletedAt: null,
       status: ServiceStatus.PUBLISHED,
@@ -295,17 +365,66 @@ export class ServicesService {
       categoryId: query.categoryId,
       vendorId: query.vendorId,
       category: {
-        slug: query.categorySlug,
+        slug: query.categorySlug || undefined,
         isActive: true,
         deletedAt: null,
       },
-      vendor: { status: VendorStatus.APPROVED, deletedAt: null },
-      ...this.searchWhere(query.search),
+      vendor: {
+        status: VendorStatus.APPROVED,
+        deletedAt: null,
+        province: query.province
+          ? { contains: query.province, mode: 'insensitive' }
+          : undefined,
+        district: query.district
+          ? { contains: query.district, mode: 'insensitive' }
+          : undefined,
+        ward: query.ward
+          ? { contains: query.ward, mode: 'insensitive' }
+          : undefined,
+      },
+      slots: filtersBySlot ? { some: slotWhere } : undefined,
+      ...this.searchWhere(query.q || query.search),
     };
-    return this.list(where, page, limit, [
-      { publishedAt: 'desc' },
-      { id: 'desc' },
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.service.findMany({
+        where,
+        orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: serviceResponseSelect,
+      }),
+      this.prisma.service.count({ where }),
     ]);
+
+    const slots = rows.length
+      ? await this.prisma.slot.findMany({
+          where: {
+            serviceId: { in: rows.map(({ id }) => id) },
+            ...this.searchSlotWhere(now, from, to, minPrice, maxPrice),
+          },
+          select: searchSlotSelect,
+          orderBy: [
+            { serviceId: 'asc' },
+            { startAt: 'asc' },
+            { id: 'asc' },
+          ],
+        })
+      : [];
+    const slotsByService = this.groupSearchSlots(slots);
+
+    return {
+      items: rows.map((service) =>
+        this.serializePublicSearchItem(
+          service,
+          slotsByService.get(service.id) ?? [],
+        ),
+      ),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findPublicBySlug(slug: string): Promise<ServiceResponse> {
@@ -422,7 +541,104 @@ export class ServicesService {
       OR: [
         { title: { contains: search, mode: 'insensitive' } },
         { summary: { contains: search, mode: 'insensitive' } },
+        {
+          vendor: {
+            displayName: { contains: search, mode: 'insensitive' },
+          },
+        },
       ],
+    };
+  }
+
+  private searchSlotWhere(
+    now: Date,
+    from?: Date,
+    to?: Date,
+    minPrice?: bigint,
+    maxPrice?: bigint,
+  ): Prisma.SlotWhereInput {
+    const endAfter = from && from > now ? from : now;
+    const priceBounds: Prisma.BigIntFilter = {
+      gte: minPrice,
+      lte: maxPrice,
+    };
+    const hasPrice = minPrice !== undefined || maxPrice !== undefined;
+
+    return {
+      status: SlotStatus.OPEN,
+      deletedAt: null,
+      endAt: { gt: endAfter },
+      startAt: to ? { lt: to } : undefined,
+      OR: hasPrice
+        ? [
+            {
+              priceAmount: {
+                not: null,
+                gte: minPrice,
+                lte: maxPrice,
+              },
+            },
+            {
+              priceAmount: null,
+              service: { priceAmount: priceBounds },
+            },
+          ]
+        : undefined,
+    };
+  }
+
+  private parseSearchPrice(
+    value: string | undefined,
+    field: 'minPrice' | 'maxPrice',
+  ): bigint | undefined {
+    if (value === undefined) return undefined;
+    const amount = BigInt(value);
+    if (amount > MAX_MONEY_AMOUNT) {
+      throw new BadRequestException(`${field} is outside the supported range`);
+    }
+    return amount;
+  }
+
+  private groupSearchSlots(
+    slots: SearchSlotRecord[],
+  ): Map<string, SearchSlotRecord[]> {
+    const grouped = new Map<string, SearchSlotRecord[]>();
+    for (const slot of slots) {
+      const serviceSlots = grouped.get(slot.serviceId);
+      if (serviceSlots) serviceSlots.push(slot);
+      else grouped.set(slot.serviceId, [slot]);
+    }
+    return grouped;
+  }
+
+  private serializePublicSearchItem(
+    service: ServiceRecord,
+    slots: SearchSlotRecord[],
+  ): PublicServiceSearchItem {
+    let startingPrice = service.priceAmount;
+    if (slots.length > 0) {
+      startingPrice = slots.reduce((minimum, slot) => {
+        const effectivePrice = slot.priceAmount ?? service.priceAmount;
+        return effectivePrice < minimum ? effectivePrice : minimum;
+      }, slots[0].priceAmount ?? service.priceAmount);
+    }
+    const imageUrl = service.images[0]?.url ?? service.thumbnailUrl;
+    const nextSlot = slots[0];
+
+    return {
+      ...this.serialize(service),
+      thumbnail: imageUrl ? { url: imageUrl } : null,
+      startingPrice: {
+        amount: serializeMoneyAmount(startingPrice),
+        currency: service.currency,
+      },
+      nextAvailableSlot: nextSlot
+        ? {
+            id: nextSlot.id,
+            startAt: nextSlot.startAt,
+            endAt: nextSlot.endAt,
+          }
+        : null,
     };
   }
 
