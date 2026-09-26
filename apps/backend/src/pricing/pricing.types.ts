@@ -1,4 +1,6 @@
-export type PricingSource = 'SLOT' | 'SERVICE';
+import type { PricingSource } from '../generated/prisma/client.js';
+
+export type { PricingSource };
 
 export type EffectivePrice = Readonly<{
   unitPriceAmount: bigint;

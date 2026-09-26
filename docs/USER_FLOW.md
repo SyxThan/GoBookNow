@@ -3558,3 +3558,94 @@ Investigate Problems
 ```
 
 Nếu toàn bộ ba hành trình trên hoạt động đúng cùng các error path đã định nghĩa, product flow của GoBook MVP được xem là hoàn chỉnh trước khi bước vào implementation.
+
+---
+
+# 145. Booking Schema Foundation Flow
+
+This section documents the flow prepared by migration `booking_schema`. The
+runtime hold algorithm is intentionally deferred to the next task.
+
+Future customer booking foundation:
+
+```text
+Customer selects Slot
+↓
+POST /api/v1/bookings
+↓
+PostgreSQL transaction validates Slot, Service, Vendor, price, and capacity
+↓
+Booking PENDING_PAYMENT
+↓
+Reservation HELD
+↓
+BookingItem price/title/time snapshot persisted
+↓
+Payment
+   ├── success
+   │     ↓
+   │ Booking CONFIRMED
+   │ Reservation CONFIRMED
+   │
+   └── timeout
+         ↓
+      Booking EXPIRED
+      Reservation EXPIRED
+```
+
+The future create request accepts only:
+
+```json
+{
+  "items": [
+    {
+      "slotId": "uuid",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+The client must not send authoritative `customerId`, `vendorId`, `serviceId`,
+price, subtotal, total, currency, or status. Backend resolves:
+
+```text
+Slot -> Service -> Vendor -> effective price
+```
+
+`Idempotency-Key` is the future retry contract for `POST /api/v1/bookings`.
+Same customer plus same non-null key must identify the same creation request.
+Different payload with the same key should return `409`.
+
+Capacity contract for the next implementation task:
+
+```text
+consumedCapacity =
+CONFIRMED reservations
++
+HELD reservations where expires_at > now
+
+available = Slot.capacity - consumedCapacity
+```
+
+Expired `HELD` rows with `expires_at <= now` must not count, even before cleanup
+jobs finalize them.
+
+This issue does not implement:
+
+```text
+capacity locking
+reservation creation endpoint behavior
+Redis TTL
+background expiration worker
+payment
+VNPay
+refund
+ticket
+QR
+email
+notifications
+cancellation policy
+partial booking
+multi-vendor booking
+```

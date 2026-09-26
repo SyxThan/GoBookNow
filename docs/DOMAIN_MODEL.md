@@ -3489,3 +3489,145 @@ Money không được tính sai hoặc xử lý hai lần.
 History không được thay đổi chỉ vì Vendor chỉnh dữ liệu hiện tại.
 
 Nếu ba nguyên tắc này được giữ đúng thì ERD v1 đủ ổn định để bắt đầu triển khai database và Booking Engine.
+
+---
+
+# 126. Booking Schema Foundation Update
+
+Migration `booking_schema` implements the Booking foundation for the next
+Reservation Hold and Capacity Enforcement task. This is intentionally narrower
+than the full future marketplace model: no Payment, Ticket, Refund, Voucher,
+Commission, or cancellation policy tables are added here.
+
+## Implemented aggregate
+
+```text
+User(Customer)
+  1:N
+Booking
+
+Vendor
+  1:N
+Booking
+
+Booking
+  1:N
+BookingItem
+
+BookingItem
+  1:1
+Reservation
+
+Service
+  1:N
+BookingItem
+
+Slot
+  1:N
+BookingItem
+
+Slot
+  1:N
+Reservation
+```
+
+MVP rule: one Booking belongs to one Vendor. A Booking can contain multiple
+BookingItems, but every item must resolve to the same `Booking.vendorId`.
+Database foreign keys protect direct relationships; the one-vendor invariant is
+an application/domain invariant checked by future booking creation logic.
+
+## Booking
+
+`bookings` stores the customer-facing aggregate:
+
+```text
+id UUID PK
+booking_code VARCHAR(30) UNIQUE
+customer_id UUID FK -> users.id ON DELETE RESTRICT
+vendor_id UUID FK -> vendors.id ON DELETE RESTRICT
+status BookingStatus DEFAULT PENDING_PAYMENT
+currency VARCHAR(3) DEFAULT 'VND'
+subtotal_amount BIGINT CHECK >= 0
+total_amount BIGINT CHECK >= 0
+expires_at TIMESTAMPTZ NULL
+confirmed_at TIMESTAMPTZ NULL
+cancelled_at TIMESTAMPTZ NULL
+expired_at TIMESTAMPTZ NULL
+idempotency_key VARCHAR(100) NULL
+created_at TIMESTAMPTZ
+updated_at TIMESTAMPTZ
+```
+
+Indexes cover customer list, vendor list, status filters, and created-time
+ordering. `(customer_id, idempotency_key)` is unique so future POST retries can
+return the same booking instead of creating duplicate holds. Multiple null
+idempotency keys remain possible with PostgreSQL semantics.
+
+`booking_code` is public/customer-friendly and unique, but UUID remains the
+database identifier.
+
+## BookingItem
+
+`booking_items` exists because a Booking may contain multiple slots/items while
+still remaining one Vendor in MVP. It also stores immutable historical
+snapshots:
+
+```text
+service_title_snapshot
+slot_start_at_snapshot
+slot_end_at_snapshot
+unit_price_amount
+quantity
+subtotal_amount
+currency
+pricing_source
+```
+
+Vendor changes to Service title, Service price, Slot price, or Slot time must
+not mutate existing BookingItem history. `subtotal_amount =
+unit_price_amount * quantity` is calculated by future creation logic using
+BigInt arithmetic.
+
+## Reservation
+
+`reservations` is the capacity allocation record:
+
+```text
+booking_item_id UUID UNIQUE FK -> booking_items.id ON DELETE CASCADE
+slot_id UUID FK -> slots.id ON DELETE RESTRICT
+quantity INT CHECK > 0
+status ReservationStatus DEFAULT HELD
+expires_at TIMESTAMPTZ NULL
+confirmed_at TIMESTAMPTZ NULL
+released_at TIMESTAMPTZ NULL
+```
+
+`Reservation.quantity` intentionally mirrors `BookingItem.quantity` so future
+capacity queries can aggregate by `slot_id` without loading BookingItem rows.
+Future creation transactions must guarantee equality.
+
+Capacity formula for the next task:
+
+```text
+consumedCapacity =
+SUM Reservation.quantity
+WHERE slot_id = target
+AND (
+  status = CONFIRMED
+  OR (status = HELD AND expires_at > now)
+)
+
+available = Slot.capacity - consumedCapacity
+```
+
+A `HELD` reservation with `expires_at <= now` must not count as active capacity,
+even if a cleanup job has not yet changed the status to `EXPIRED`.
+
+No `remainingCapacity` is added to Slot and Slot capacity is not decremented.
+
+## Delete strategy
+
+Business records should not normally be physically deleted. Foreign keys from
+User, Vendor, Service, and Slot use `RESTRICT`. `Booking -> BookingItem` and
+`BookingItem -> Reservation` use `CASCADE` to keep test cleanup and aggregate
+cleanup coherent; the application must not expose hard-delete Booking APIs.
