@@ -3566,12 +3566,12 @@ Nếu toàn bộ ba hành trình trên hoạt động đúng cùng các error pa
 This section documents the flow prepared by migration `booking_schema`. The
 runtime hold algorithm is intentionally deferred to the next task.
 
-Future customer booking foundation:
+Implemented customer hold foundation:
 
 ```text
 Customer selects Slot
 ↓
-POST /api/v1/bookings
+POST /api/v1/bookings/hold
 ↓
 PostgreSQL transaction validates Slot, Service, Vendor, price, and capacity
 ↓
@@ -3630,6 +3630,10 @@ available = Slot.capacity - consumedCapacity
 
 Expired `HELD` rows with `expires_at <= now` must not count, even before cleanup
 jobs finalize them.
+
+This hold flow uses `Idempotency-Key` for retry safety. Same customer, same key,
+and same normalized item payload returns the existing Booking instead of
+consuming capacity again. A changed payload with the same key returns conflict.
 
 This issue does not implement:
 

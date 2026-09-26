@@ -1,14 +1,14 @@
 # GoBook Booking API Contract
 
-This document defines the future Booking API contract prepared by the
-`booking_schema` foundation. Runtime endpoints are intentionally not implemented
-in this task.
+This document defines the Booking API contract. `POST /api/v1/bookings/hold`
+is implemented as the first runtime Booking endpoint.
 
 ## Scope
 
 This contract covers:
 
 - `POST /api/v1/bookings`
+- `POST /api/v1/bookings/hold`
 - `GET /api/v1/bookings/me`
 - `GET /api/v1/bookings/:id`
 - `POST /api/v1/bookings/:id/cancel`
@@ -17,8 +17,9 @@ This contract covers:
 - money representation
 - Booking and Reservation state rules
 
-This task does not implement reservation locking, capacity enforcement, Redis
-TTL, payment, refund, ticketing, or cancellation policy execution.
+The hold endpoint implements PostgreSQL-backed reservation locking and capacity
+enforcement. Payment, refund, ticketing, expiration finalization workers, and
+cancellation policy execution remain future tasks.
 
 ## Money
 
@@ -46,7 +47,97 @@ Incorrect:
 MVP currency is `VND`. `Booking.currency` and each `BookingItem.currency` must
 match. No currency conversion is part of MVP.
 
-## Create Booking
+## Create Booking Hold
+
+```http
+POST /api/v1/bookings/hold
+Authorization: Bearer <customer-access-token>
+Idempotency-Key: <unique-client-request-key>
+Content-Type: application/json
+```
+
+Only authenticated users with the `CUSTOMER` role can create holds. A user with
+both `CUSTOMER` and `VENDOR` can still create a customer hold. `customerId` is
+always derived from the JWT, never from the body.
+
+Request body:
+
+```json
+{
+  "items": [
+    {
+      "slotId": "550e8400-e29b-41d4-a716-446655440000",
+      "quantity": 2
+    }
+  ]
+}
+```
+
+Rules:
+
+- `Idempotency-Key` is required, trimmed, and limited to 100 characters.
+- `items.length` must be 1..10.
+- duplicate `slotId` values are rejected.
+- `quantity` must be an integer from 1..1000.
+- client-supplied price, customer, vendor, service, total, currency, status, or
+  expiration fields are rejected.
+
+Successful new hold response: `201 Created`.
+
+Idempotent replay response: `200 OK`.
+
+```json
+{
+  "id": "uuid",
+  "bookingCode": "GBK-20260926-ABC123",
+  "status": "PENDING_PAYMENT",
+  "currency": "VND",
+  "subtotalAmount": "300000",
+  "totalAmount": "300000",
+  "expiresAt": "2026-09-26T10:10:00.000Z",
+  "items": [
+    {
+      "id": "uuid",
+      "serviceId": "uuid",
+      "slotId": "uuid",
+      "serviceTitle": "Workshop Python",
+      "startAt": "2026-10-01T02:00:00.000Z",
+      "endAt": "2026-10-01T04:00:00.000Z",
+      "quantity": 2,
+      "unitPriceAmount": "150000",
+      "subtotalAmount": "300000",
+      "pricingSource": "SLOT",
+      "reservation": {
+        "id": "uuid",
+        "status": "HELD",
+        "expiresAt": "2026-09-26T10:10:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+The endpoint:
+
+- reads one transaction timestamp from PostgreSQL with `NOW()`.
+- locks requested Slot rows in sorted UUID order with `SELECT ... FOR UPDATE`.
+- locks related Service rows in sorted UUID order before price snapshot.
+- validates public bookability: future `OPEN` Slot, `PUBLISHED` Service,
+  `APPROVED` Vendor, active Category, and no soft deletes.
+- enforces same Vendor and same currency across all items.
+- calculates capacity from active Reservation rows.
+- creates Booking, BookingItems, and Reservations in one transaction.
+- sets `Booking.expiresAt` and every `Reservation.expiresAt` to the same
+  timestamp.
+
+Capacity errors return `409` with code `INSUFFICIENT_CAPACITY`. A reused
+idempotency key with a different normalized payload returns `409` with code
+`IDEMPOTENCY_CONFLICT`.
+
+An idempotency key that points to an expired hold still returns the existing
+idempotent result; clients must use a new key for a new hold attempt.
+
+## Future Create Booking Alias
 
 ```http
 POST /api/v1/bookings
@@ -85,7 +176,7 @@ The request must not accept:
 The server resolves `Slot -> Service -> Vendor -> effective price`. Client price
 is never authoritative.
 
-Successful conceptual response:
+The conceptual response matches the implemented hold response:
 
 ```json
 {
@@ -109,6 +200,7 @@ Successful conceptual response:
       "subtotalAmount": "300000",
       "pricingSource": "SLOT",
       "reservation": {
+        "id": "uuid",
         "status": "HELD",
         "expiresAt": "2026-09-26T10:10:00.000Z"
       }
@@ -129,15 +221,13 @@ Future creation transaction must guarantee:
 
 ## Idempotency
 
-`Idempotency-Key` prepares safe retries for `POST /bookings`.
+`Idempotency-Key` provides safe retries for hold creation.
 
 Same authenticated customer plus same non-null key must represent the same
 create request. The schema enforces uniqueness on `(customer_id,
 idempotency_key)`.
 
-Future behavior:
-
-- same payload and same key returns the existing booking
+- same normalized payload and same key returns the existing booking
 - different payload and same key returns `409`
 - different customers may reuse the same key
 - multiple null keys remain allowed by PostgreSQL uniqueness semantics
@@ -301,9 +391,6 @@ even if cleanup has not yet moved it to `EXPIRED`.
 
 ## Out Of Scope
 
-- reservation locking
-- `SELECT FOR UPDATE` capacity enforcement
-- concurrent hold algorithm
 - Redis TTL
 - payment gateway
 - VNPay
