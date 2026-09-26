@@ -3625,6 +3625,37 @@ even if a cleanup job has not yet changed the status to `EXPIRED`.
 
 No `remainingCapacity` is added to Slot and Slot capacity is not decremented.
 
+## Implemented hold capacity protocol
+
+`POST /api/v1/bookings/hold` is implemented as the first capacity writer.
+
+Inside one PostgreSQL transaction it:
+
+```text
+read DB NOW()
+lock requested Slot rows in deterministic UUID order
+lock related Service rows in deterministic UUID order
+validate public bookability
+sum active capacity allocations from reservations
+create Booking PENDING_PAYMENT
+create BookingItems with immutable price/title/time snapshots
+create Reservations HELD
+commit
+```
+
+Active capacity remains:
+
+```text
+Reservation.status = CONFIRMED
+OR
+Reservation.status = HELD AND Reservation.expires_at > database NOW()
+```
+
+Future operations that change capacity allocation should follow the same Slot
+locking protocol, including release, cancellation, expiration finalization, and
+capacity-changing Slot updates. PostgreSQL remains the source of truth; Redis is
+not authoritative for capacity.
+
 ## Delete strategy
 
 Business records should not normally be physically deleted. Foreign keys from

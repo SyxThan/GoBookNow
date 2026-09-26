@@ -6,6 +6,9 @@ import {
 } from '../../generated/prisma/client.js';
 
 export class BookingReservationResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
   @ApiProperty({ enum: ReservationStatus, example: ReservationStatus.HELD })
   status: ReservationStatus;
 

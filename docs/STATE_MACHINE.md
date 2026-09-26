@@ -1086,3 +1086,25 @@ CONFIRMED -> HELD
 
 `Reservation.CONFIRMED` still exists after payment because Reservation
 represents capacity allocation, not only a temporary cache-style hold.
+
+## Hold creation behavior
+
+`POST /api/v1/bookings/hold` creates only the initial states:
+
+```text
+Booking.status = PENDING_PAYMENT
+Reservation.status = HELD
+```
+
+The hold endpoint does not implement:
+
+```text
+PENDING_PAYMENT -> CONFIRMED
+PENDING_PAYMENT -> EXPIRED
+HELD -> CONFIRMED
+HELD -> EXPIRED
+HELD -> RELEASED
+```
+
+Those transitions belong to payment confirmation, expiration finalization,
+release, and cancellation tasks.
