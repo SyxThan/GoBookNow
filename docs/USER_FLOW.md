@@ -3635,13 +3635,26 @@ This hold flow uses `Idempotency-Key` for retry safety. Same customer, same key,
 and same normalized item payload returns the existing Booking instead of
 consuming capacity again. A changed payload with the same key returns conflict.
 
+Implemented by the expiration worker:
+
+```text
+Booking PENDING_PAYMENT + expiresAt <= database NOW()
+↓
+Booking EXPIRED
+Reservation HELD + expiresAt <= database NOW()
+↓
+Reservation EXPIRED
+```
+
+The worker may run after the exact deadline, but capacity is released at the
+deadline because expired `HELD` rows stop counting in the capacity formula.
+Payment initiation must later reject any Booking where `expiresAt <= database
+NOW()`, even if the enum still briefly reads `PENDING_PAYMENT`.
+
 This issue does not implement:
 
 ```text
-capacity locking
-reservation creation endpoint behavior
 Redis TTL
-background expiration worker
 payment
 VNPay
 refund

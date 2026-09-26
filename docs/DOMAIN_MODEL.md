@@ -3656,6 +3656,60 @@ locking protocol, including release, cancellation, expiration finalization, and
 capacity-changing Slot updates. PostgreSQL remains the source of truth; Redis is
 not authoritative for capacity.
 
+## Implemented expiration finalization protocol
+
+Reservation hold expiration is finalized by an internal backend worker. The
+business deadline remains the persisted `Booking.expires_at` /
+`Reservation.expires_at` timestamp. Redis TTL is not authoritative.
+
+Eligibility:
+
+```text
+Booking.status = PENDING_PAYMENT
+AND Booking.expires_at IS NOT NULL
+AND Booking.expires_at <= database NOW()
+```
+
+The worker processes bounded batches using:
+
+```text
+ORDER BY expires_at ASC, id ASC
+LIMIT BOOKING_EXPIRATION_BATCH_SIZE
+FOR UPDATE SKIP LOCKED
+```
+
+Inside one transaction it locks/re-checks Booking rows first, transitions
+eligible Reservation rows from `HELD` to `EXPIRED`, then transitions the Booking
+from `PENDING_PAYMENT` to `EXPIRED` and sets `expired_at = database NOW()`.
+`CONFIRMED`, `RELEASED`, and already `EXPIRED` reservations are not modified.
+
+Capacity release does not require a Slot update:
+
+```text
+HELD AND expires_at > database NOW()   => consumes capacity
+HELD AND expires_at <= database NOW()  => does not consume capacity
+EXPIRED                                => does not consume capacity
+RELEASED                               => does not consume capacity
+```
+
+Therefore if a hold expires at `14:10:00` and the worker runs at `14:10:45`,
+new hold capacity is already available during the lag window. The worker only
+finalizes stale state for lifecycle clarity.
+
+For all future Booking lifecycle writes, the locking order contract is:
+
+```text
+lock/re-check Booking
+then mutate related Reservations
+```
+
+Future payment initiation must require:
+
+```text
+Booking.status = PENDING_PAYMENT
+AND Booking.expires_at > database NOW()
+```
+
 ## Delete strategy
 
 Business records should not normally be physically deleted. Foreign keys from

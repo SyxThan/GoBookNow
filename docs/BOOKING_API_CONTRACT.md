@@ -18,8 +18,9 @@ This contract covers:
 - Booking and Reservation state rules
 
 The hold endpoint implements PostgreSQL-backed reservation locking and capacity
-enforcement. Payment, refund, ticketing, expiration finalization workers, and
-cancellation policy execution remain future tasks.
+enforcement. The reservation expiration worker finalizes timed-out holds.
+Payment, refund, ticketing, and cancellation policy execution remain future
+tasks.
 
 ## Money
 
@@ -136,6 +137,60 @@ idempotency key with a different normalized payload returns `409` with code
 
 An idempotency key that points to an expired hold still returns the existing
 idempotent result; clients must use a new key for a new hold attempt.
+
+`expiresAt` is a hard business deadline. Clients must stop treating the hold as
+payable once `Booking.expiresAt <= database NOW()`, even if a background worker
+has not yet changed `Booking.status` from `PENDING_PAYMENT` to `EXPIRED`.
+
+## Booking Expiration Worker
+
+The backend runs an internal periodic expiration sweep. There is no public HTTP
+endpoint for expiration.
+
+Configuration:
+
+```text
+BOOKING_EXPIRATION_INTERVAL_SECONDS=60
+BOOKING_EXPIRATION_BATCH_SIZE=100
+```
+
+The worker uses PostgreSQL as the source of truth:
+
+```text
+Booking.status = PENDING_PAYMENT
+AND Booking.expiresAt IS NOT NULL
+AND Booking.expiresAt <= database NOW()
+```
+
+Within one database transaction the worker:
+
+```text
+read DB NOW()
+select a bounded batch of candidate Booking rows
+lock candidates with FOR UPDATE SKIP LOCKED
+re-check Booking.status and Booking.expiresAt
+update related Reservation rows from HELD to EXPIRED
+update Booking from PENDING_PAYMENT to EXPIRED
+set Booking.expiredAt = DB NOW()
+commit
+```
+
+Only `Reservation.status = HELD` rows with `Reservation.expiresAt <= DB NOW()`
+transition to `EXPIRED`. `CONFIRMED`, `RELEASED`, and already `EXPIRED`
+reservations are not modified. The worker is idempotent; a later sweep over the
+same data makes no additional state change.
+
+For future payment initiation, the payability rule is:
+
+```text
+Booking.status = PENDING_PAYMENT
+AND Booking.expiresAt > database NOW()
+```
+
+Payment confirmation must lock and re-check the Booking before writing terminal
+state. Lifecycle mutations lock/re-check Booking first, then mutate related
+Reservations. This keeps expiration, future confirmation, cancellation, and
+release flows race-safe.
 
 ## Future Create Booking Alias
 
@@ -371,7 +426,7 @@ Disallowed examples:
 Reservation is the capacity allocation source of truth. `Slot.capacity` is not
 decremented and `Slot.remainingCapacity` is not stored.
 
-Future capacity formula:
+Active capacity formula:
 
 ```text
 consumedCapacity =
@@ -387,7 +442,8 @@ available = slots.capacity - consumedCapacity
 ```
 
 A `HELD` reservation with `expiresAt <= now` must not count as active capacity,
-even if cleanup has not yet moved it to `EXPIRED`.
+even if the expiration worker has not yet moved it to `EXPIRED`. Capacity is
+released by the persisted deadline, not by worker punctuality.
 
 ## Out Of Scope
 
