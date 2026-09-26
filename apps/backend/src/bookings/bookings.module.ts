@@ -5,11 +5,19 @@ import { BookingCodeService } from './booking-code.service.js';
 import { BookingsController } from './bookings.controller.js';
 import { BookingsService } from './bookings.service.js';
 import { CapacityService } from './capacity.service.js';
+import { BookingExpirationScheduler } from './expiration/booking-expiration.scheduler.js';
+import { BookingExpirationService } from './expiration/booking-expiration.service.js';
 
 @Module({
   imports: [AuthModule, PricingModule],
   controllers: [BookingsController],
-  providers: [BookingsService, CapacityService, BookingCodeService],
-  exports: [BookingsService, CapacityService],
+  providers: [
+    BookingsService,
+    CapacityService,
+    BookingCodeService,
+    BookingExpirationService,
+    BookingExpirationScheduler,
+  ],
+  exports: [BookingsService, CapacityService, BookingExpirationService],
 })
 export class BookingsModule {}

@@ -1087,7 +1087,7 @@ CONFIRMED -> HELD
 `Reservation.CONFIRMED` still exists after payment because Reservation
 represents capacity allocation, not only a temporary cache-style hold.
 
-## Hold creation behavior
+## Hold creation and expiration behavior
 
 `POST /api/v1/bookings/hold` creates only the initial states:
 
@@ -1096,15 +1096,32 @@ Booking.status = PENDING_PAYMENT
 Reservation.status = HELD
 ```
 
-The hold endpoint does not implement:
+The hold endpoint does not implement payment confirmation, release, or
+cancellation transitions. Expiration finalization is implemented by the
+background worker:
 
 ```text
-PENDING_PAYMENT -> CONFIRMED
-PENDING_PAYMENT -> EXPIRED
-HELD -> CONFIRMED
-HELD -> EXPIRED
-HELD -> RELEASED
+Booking:
+PENDING_PAYMENT
+  └── expiresAt <= database NOW()
+      └── EXPIRED
+
+Reservation:
+HELD
+  └── expiresAt <= database NOW()
+      └── EXPIRED
 ```
 
-Those transitions belong to payment confirmation, expiration finalization,
-release, and cancellation tasks.
+The worker locks/re-checks Booking first, then mutates related Reservations in
+the same transaction. Future payment confirmation must use the same Booking
+lock-first rule and must only confirm a Booking that is still:
+
+```text
+PENDING_PAYMENT
+AND expiresAt > database NOW()
+```
+
+If the worker runs late, capacity is still released on time because active
+capacity counts only `HELD` reservations where `expiresAt > database NOW()`.
+Finalization changes stale rows from `HELD` to `EXPIRED`; it is not the source
+of capacity correctness.
