@@ -9,6 +9,7 @@ import { BookingsModule } from './bookings/bookings.module.js';
 import { CategoriesModule } from './categories/categories.module.js';
 import { PrismaModule } from './database/prisma/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 import { ServicesModule } from './services/services.module.js';
 import { SlotsModule } from './slots/slots.module.js';
 import { VendorApplicationsModule } from './vendor-applications/vendor-applications.module.js';
@@ -27,6 +28,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     BookingsModule,
     CategoriesModule,
     HealthModule,
+    PaymentsModule,
     ServicesModule,
     SlotsModule,
     VendorsModule,

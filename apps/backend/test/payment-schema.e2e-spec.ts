@@ -17,10 +17,13 @@ import {
   UserStatus,
   VendorStatus,
 } from '../src/generated/prisma/client.js';
+import { PaymentsService } from '../src/payments/payments.service.js';
+import type { PaymentCheckoutProvider } from '../src/payments/providers/payment-checkout-provider.js';
 
 describe('Payment schema foundation (e2e, PostgreSQL)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let payments: PaymentsService;
   const run = randomUUID().slice(0, 8);
   const userIds: string[] = [];
   const vendorIds: string[] = [];
@@ -42,6 +45,19 @@ describe('Payment schema foundation (e2e, PostgreSQL)', () => {
     app = fixture.createNestApplication();
     await app.init();
     prisma = fixture.get(PrismaService);
+    const checkoutProvider: PaymentCheckoutProvider = {
+      createCheckout: async (input) => ({
+        paymentUrl: 'https://pay-sandbox.sepay.vn/v1/checkout/init',
+        method: 'POST',
+        formFields: {
+          order_invoice_number: input.merchantReference,
+          order_amount: input.amount.toString(),
+          currency: input.currency,
+          signature: 'test-signature',
+        },
+      }),
+    };
+    payments = new PaymentsService(prisma, checkoutProvider);
 
     customerId = await createUser('customer');
     const ownerUserId = await createUser('vendor-owner');
@@ -144,6 +160,7 @@ describe('Payment schema foundation (e2e, PostgreSQL)', () => {
     suffix: string,
     totalAmount = 300_000n,
     withItem = false,
+    withReservation = false,
   ) {
     const booking = await prisma.booking.create({
       data: {
@@ -166,6 +183,15 @@ describe('Payment schema foundation (e2e, PostgreSQL)', () => {
                 serviceTitleSnapshot: `Payment Workshop ${run}`,
                 slotStartAtSnapshot: new Date(Date.UTC(2099, 0, 1, 2)),
                 slotEndAtSnapshot: new Date(Date.UTC(2099, 0, 1, 4)),
+                reservation: withReservation
+                  ? {
+                      create: {
+                        slotId,
+                        quantity: 2,
+                        expiresAt: new Date(Date.UTC(2099, 0, 1, 1)),
+                      },
+                    }
+                  : undefined,
               },
             }
           : undefined,
@@ -174,6 +200,37 @@ describe('Payment schema foundation (e2e, PostgreSQL)', () => {
     bookingIds.push(booking.id);
     return booking;
   }
+
+  it('converges concurrent initiation requests to one Payment and active attempt', async () => {
+    const booking = await createBooking(
+      'CONCURRENT-INIT',
+      300_000n,
+      true,
+      true,
+    );
+
+    const [first, second] = await Promise.all([
+      payments.initiateSepay(customerId, booking.id),
+      payments.initiateSepay(customerId, booking.id),
+    ]);
+    paymentIds.push(first.paymentId);
+
+    expect(second.paymentId).toBe(first.paymentId);
+    expect(second.attemptId).toBe(first.attemptId);
+    expect(second.merchantReference).toBe(first.merchantReference);
+    await expect(
+      prisma.payment.count({ where: { bookingId: booking.id } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.paymentAttempt.count({
+        where: {
+          paymentId: first.paymentId,
+          provider: PaymentProvider.SEPAY,
+          status: PaymentAttemptStatus.PENDING,
+        },
+      }),
+    ).resolves.toBe(1);
+  });
 
   async function createPayment(
     bookingId: string,
