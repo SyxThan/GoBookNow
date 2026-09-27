@@ -134,7 +134,7 @@ Reservation hết thời gian giữ chỗ.
 Chỉ khi:
 
 ```text
-VNPay callback hợp lệ
+SePay webhook hợp lệ
 +
 signature đúng
 +
@@ -269,55 +269,42 @@ Booking bị hủy trước khi reservation được consume.
 ## States
 
 ```text
-INITIATED
 PENDING
-SUCCESS
-FAILED
+SUCCEEDED
 EXPIRED
-NEEDS_REVIEW
-REFUND_PENDING
-PARTIAL_REFUNDED
-REFUNDED
+CANCELLED
 ```
 
-Flow chính:
-
-```text
-INITIATED
-   ↓
-PENDING
-   ↓
-SUCCESS
-```
-
-Failure:
+Allowed transitions:
 
 ```text
 PENDING
- ├──→ FAILED
- ├──→ EXPIRED
- └──→ NEEDS_REVIEW
+├── SUCCEEDED
+├── EXPIRED
+└── CANCELLED
 ```
 
-Refund:
+Terminal states:
 
 ```text
-SUCCESS
-  ↓
-REFUND_PENDING
-  ↓
-PARTIAL_REFUNDED
+SUCCEEDED
+EXPIRED
+CANCELLED
 ```
 
-hoặc:
+`Payment` không có `FAILED`. Provider attempt có thể thất bại trong khi
+aggregate vẫn `PENDING` để Customer retry trước khi Booking hold hết hạn.
+
+Disallowed examples:
 
 ```text
-SUCCESS
-  ↓
-REFUND_PENDING
-  ↓
-REFUNDED
+SUCCEEDED -> PENDING
+EXPIRED -> SUCCEEDED
+CANCELLED -> SUCCEEDED
 ```
+
+Generic PATCH không được đặt status tùy ý. Timestamp terminal tương ứng phải
+được service layer ghi cùng transition trong task runtime sau.
 
 ---
 
@@ -325,52 +312,21 @@ REFUNDED
 
 ```mermaid
 stateDiagram-v2
-    [*] --> INITIATED
-
-    INITIATED --> PENDING: Payment URL created
-
-    PENDING --> SUCCESS: Verified VNPay callback
-    PENDING --> FAILED: Gateway reports failure
-    PENDING --> EXPIRED: Payment expired
-    PENDING --> NEEDS_REVIEW: Payment inconsistency
-
-    SUCCESS --> REFUND_PENDING: Refund requested
-
-    REFUND_PENDING --> PARTIAL_REFUNDED: Partial refund success
-    REFUND_PENDING --> REFUNDED: Full refund success
+    [*] --> PENDING
+    PENDING --> SUCCEEDED: Valid payment confirmed
+    PENDING --> EXPIRED: Booking hold expired
+    PENDING --> CANCELLED: Booking cancelled
 ```
 
 ---
 
-# 8. NEEDS_REVIEW dùng khi nào?
+# 8. Payment Concurrency Contract
 
-Không nên cố tự động xử lý những case nguy hiểm.
-
-Ví dụ:
-
-```text
-Payment callback đến sau khi Booking đã EXPIRED
-```
-
-hoặc:
-
-```text
-VNPay amount != Booking amount
-```
-
-hoặc:
-
-```text
-Nhiều payment attempt đều báo SUCCESS
-```
-
-Khi đó:
-
-```text
-Payment → NEEDS_REVIEW
-```
-
-Admin kiểm tra sau.
+Payment success và Booking expiration có thể chạy đồng thời. Runtime webhook
+sau này phải lock/re-check cả `Payment` và `Booking`; chỉ một conditional
+transition hợp lệ được thắng. Expiration không được ghi đè
+`SUCCEEDED`/`CONFIRMED`, và webhook đến sau khi Booking đã `EXPIRED` không được
+đổi Payment sang `SUCCEEDED`.
 
 ---
 
@@ -381,29 +337,44 @@ Một Payment có thể có nhiều attempt.
 States:
 
 ```text
-CREATED
 PENDING
-SUCCESS
+SUCCEEDED
 FAILED
+CANCELLED
 EXPIRED
-NEEDS_REVIEW
 ```
 
-Ví dụ:
+Allowed transitions:
+
+```text
+PENDING
+├── SUCCEEDED
+├── FAILED
+├── EXPIRED
+└── CANCELLED
+```
+
+Tất cả outcome đều terminal. Retry tạo một `PaymentAttempt` mới; không chuyển
+`FAILED -> PENDING`.
+
+Ví dụ retry:
 
 ```text
 Payment
 
 Attempt 1 → FAILED
 Attempt 2 → FAILED
-Attempt 3 → SUCCESS
+Attempt 3 → SUCCEEDED
 ```
 
 Payment cuối cùng:
 
 ```text
-SUCCESS
+SUCCEEDED
 ```
+
+Nếu Attempt #1 thất bại và Attempt #2 vẫn pending thì Payment aggregate vẫn
+`PENDING`.
 
 ---
 
@@ -669,13 +640,13 @@ Booking HELD
 Booking PENDING_PAYMENT
         ↓
 
-Payment SUCCESS
+Payment SUCCEEDED
         ↓
 
 Booking CONFIRMED
         ↓
 
-Reservation CONSUMED
+Reservation CONFIRMED
         ↓
 
 Ticket ACTIVE
@@ -691,13 +662,13 @@ Khi callback thanh toán hợp lệ:
 BEGIN TRANSACTION
 
 Payment
-PENDING → SUCCESS
+PENDING → SUCCEEDED
 
 Booking
 PENDING_PAYMENT → CONFIRMED
 
 Reservation
-ACTIVE → CONSUMED
+HELD → CONFIRMED
 
 Create Ticket
 ACTIVE
@@ -767,10 +738,10 @@ CHECKED_IN → ACTIVE
 Không cho:
 
 ```text
-FAILED Payment → SUCCESS
+FAILED PaymentAttempt → PENDING / SUCCEEDED
 ```
 
-nếu cùng attempt đã kết thúc và callback không hợp lệ.
+Retry phải tạo attempt mới; attempt terminal không được tái sử dụng.
 
 Không cho:
 
@@ -858,10 +829,10 @@ Booking:
 PENDING_PAYMENT → CONFIRMED
 
 Payment:
-PENDING → SUCCESS
+PENDING → SUCCEEDED
 
 Reservation:
-ACTIVE → CONSUMED
+HELD → CONFIRMED
 
 Ticket:
 ACTIVE → CHECKED_IN
@@ -886,7 +857,7 @@ Luôn đúng:
 
 ```text
 Booking CONFIRMED
-→ Payment SUCCESS
+→ Payment SUCCEEDED
 ```
 
 ```text
@@ -931,25 +902,24 @@ CONFIRMED
 ```text
 RESERVATION
 
-ACTIVE
-→ CONSUMED
+HELD
+→ CONFIRMED
 
-ACTIVE
+HELD
 → EXPIRED
 
-ACTIVE
+HELD
 → RELEASED
 ```
 
 ```text
 PAYMENT
 
-INITIATED
-→ PENDING
-→ SUCCESS
-
 PENDING
-→ FAILED / EXPIRED / NEEDS_REVIEW
+→ SUCCEEDED / EXPIRED / CANCELLED
+
+PaymentAttempt PENDING
+→ SUCCEEDED / FAILED / EXPIRED / CANCELLED
 ```
 
 ```text
