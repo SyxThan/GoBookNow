@@ -26,6 +26,7 @@ import {
   UserStatus,
   VendorStatus,
 } from '../src/generated/prisma/client.js';
+import { ensureSystemRoles } from './helpers/system-roles.js';
 
 type Identity = { id: string; roles: Role[] };
 type DbNowRow = { now: Date };
@@ -74,15 +75,7 @@ describe('Booking expiration worker (e2e, PostgreSQL)', () => {
     jwt = fixture.get(JwtService);
     expiration = fixture.get(BookingExpirationService);
 
-    await Promise.all(
-      Object.values(RoleCode).map((code) =>
-        prisma.role.upsert({
-          where: { code },
-          update: {},
-          create: { code, name: code, isSystem: true },
-        }),
-      ),
-    );
+    await ensureSystemRoles(prisma);
 
     customerA = await createIdentity([RoleCode.CUSTOMER]);
     customerB = await createIdentity([RoleCode.CUSTOMER]);

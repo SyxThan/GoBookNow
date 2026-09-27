@@ -23,6 +23,7 @@ import {
 } from '../src/generated/prisma/client.js';
 import { PricingService } from '../src/pricing/pricing.service.js';
 import { SlotsModule } from '../src/slots/slots.module.js';
+import { ensureSystemRoles } from './helpers/system-roles.js';
 
 type Identity = { id: string; roles: Role[] };
 
@@ -77,15 +78,7 @@ describe('Slot availability (e2e, PostgreSQL)', () => {
     jwt = fixture.get(JwtService);
     pricing = fixture.get(PricingService);
 
-    await Promise.all(
-      Object.values(RoleCode).map((code) =>
-        prisma.role.upsert({
-          where: { code },
-          update: {},
-          create: { code, name: code, isSystem: true },
-        }),
-      ),
-    );
+    await ensureSystemRoles(prisma);
     vendorA = await createIdentity([RoleCode.VENDOR]);
     vendorB = await createIdentity([RoleCode.VENDOR]);
     customer = await createIdentity([RoleCode.CUSTOMER]);

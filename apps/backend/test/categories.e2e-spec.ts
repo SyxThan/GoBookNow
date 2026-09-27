@@ -15,6 +15,7 @@ import { CategoriesModule } from '../src/categories/categories.module.js';
 import { PrismaModule } from '../src/database/prisma/prisma.module.js';
 import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import { CategoryScope, UserStatus } from '../src/generated/prisma/client.js';
+import { ensureSystemRoles } from './helpers/system-roles.js';
 
 type Identity = { id: string; roles: Role[] };
 
@@ -54,15 +55,7 @@ describe('Category management (e2e, PostgreSQL)', () => {
     prisma = fixture.get(PrismaService);
     jwt = fixture.get(JwtService);
 
-    await Promise.all(
-      Object.values(RoleCode).map((code) =>
-        prisma.role.upsert({
-          where: { code },
-          update: {},
-          create: { code, name: code, isSystem: true },
-        }),
-      ),
-    );
+    await ensureSystemRoles(prisma);
     admin = await createIdentity([RoleCode.ADMIN]);
     customer = await createIdentity([RoleCode.CUSTOMER]);
     vendor = await createIdentity([RoleCode.VENDOR]);

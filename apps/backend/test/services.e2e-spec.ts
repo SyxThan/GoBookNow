@@ -21,6 +21,7 @@ import {
   VendorStatus,
 } from '../src/generated/prisma/client.js';
 import { ServicesModule } from '../src/services/services.module.js';
+import { ensureSystemRoles } from './helpers/system-roles.js';
 
 type Identity = { id: string; roles: Role[] };
 
@@ -74,15 +75,7 @@ describe('Service catalog (e2e, PostgreSQL)', () => {
     prisma = fixture.get(PrismaService);
     jwt = fixture.get(JwtService);
 
-    await Promise.all(
-      Object.values(RoleCode).map((code) =>
-        prisma.role.upsert({
-          where: { code },
-          update: {},
-          create: { code, name: code, isSystem: true },
-        }),
-      ),
-    );
+    await ensureSystemRoles(prisma);
 
     vendorA = await createIdentity([RoleCode.VENDOR]);
     vendorB = await createIdentity([RoleCode.VENDOR]);
