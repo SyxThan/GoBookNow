@@ -84,6 +84,7 @@ temp/
 .cache/
 *.tmp
 *.swp
+*.dump
 
 # Local development uploads
 uploads/
