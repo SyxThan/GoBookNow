@@ -1,8 +1,7 @@
 # GoBook Payment API Contract
 
-This document defines the Payment schema and the implemented SePay checkout
-initiation contract. Payment confirmation and webhook processing remain future
-work.
+This document defines the Payment schema, SePay checkout initiation, Payment
+Gateway IPN confirmation, and the authoritative payment-result contract.
 
 ## Architecture
 
@@ -146,13 +145,16 @@ form.submit();
 The integration uses the official `sepay-pg-node` SDK with `PURCHASE` and
 `BANK_TRANSFER`. `SEPAY_ENV` defaults to `sandbox`; production is selected only
 through configuration. Optional success/error/cancel URLs are browser redirect
-callbacks, not the future server-to-server IPN URL. Configured callbacks must
-be publicly reachable.
+callbacks, not the server-to-server IPN URL. The backend appends `paymentId`
+and a non-authoritative `return=success|error|cancel` hint to each configured
+callback. Configure all three base URLs to the frontend `/payment/result`
+route. The result page always reads backend state before rendering an outcome.
 
 ```dotenv
 SEPAY_ENV=sandbox
 SEPAY_MERCHANT_ID=
 SEPAY_SECRET_KEY=
+SEPAY_IPN_SECRET=
 SEPAY_SUCCESS_URL=
 SEPAY_ERROR_URL=
 SEPAY_CANCEL_URL=
@@ -181,39 +183,150 @@ a provider ID is known.
 
 The two values are distinct and must never be substituted for each other.
 
-## Future Webhook Mapping
+## SePay Payment Gateway IPN
 
-```text
-SePay IPN order.order_invoice_number
-  -> PaymentAttempt.merchantReference
-  -> provider transaction ID
-  -> exact amount
-  -> PaymentAttempt
-  -> Payment
-  -> Booking
+```http
+POST /api/v1/webhooks/sepay/ipn
+X-Secret-Key: <configured-provider-secret>
+Content-Type: application/json
 ```
 
-Signature verification, webhook authentication, matching logic, sanitized
-audit storage, and transactional processing belong to `feat/sepay-webhook`.
-The schema does not store raw webhook payloads.
+This endpoint is public from the Bearer JWT perspective because SePay calls it
+server-to-server. It authenticates with the distinct `SEPAY_IPN_SECRET` value.
+GoBook hashes the received and configured values with SHA-256 and compares the
+fixed-length digests with a timing-safe comparison. Secrets and full payloads
+must never be logged.
 
-## Future Success Flow
+This is the SePay **Payment Gateway IPN** contract. It must not be confused
+with a generic bank-account webhook or its signature/timestamp authentication.
+
+For `ORDER_PAID`, the mapping is:
+
+```text
+order.order_invoice_number -> PaymentAttempt.merchantReference
+transaction.transaction_id -> PaymentAttempt.providerTransactionId
+```
+
+GoBook requires `order_status=CAPTURED`, `transaction_type=PAYMENT`, and
+`transaction_status=APPROVED`. Both provider amount fields must exactly match
+both the Attempt and Payment snapshots. VND strings such as `250000` and
+`250000.00` normalize to integer `bigint`; fractions, signs, whitespace,
+scientific notation, and malformed values are rejected. Both provider currency
+fields and both local snapshots must be `VND`.
+
+Processing locks and re-checks Booking, Payment, then PaymentAttempt inside one
+database transaction. A valid transition writes:
+
+```text
+PaymentAttempt PENDING -> SUCCEEDED
+Payment PENDING        -> SUCCEEDED
+Booking                -> UNCHANGED
+Reservation            -> UNCHANGED
+```
+
+The same provider transaction on the same successful Attempt is an idempotent
+no-op. A different transaction already stored on the Attempt, or the same
+SePay transaction assigned to another Attempt, is acknowledged without
+confirming the Payment and logged for reconciliation. Terminal expired,
+cancelled, or failed state is never resurrected. Unknown references do not
+create financial records.
+
+Authenticated semantic events that redelivery cannot fix are acknowledged
+with HTTP 200 and sanitized reconciliation logging. Invalid credentials return
+401, structurally invalid payloads return 400, and transient internal failures
+return 5xx so SePay may retry.
+
+`TRANSACTION_VOID` is authenticated and acknowledged but does not reverse a
+successful Payment or Booking. Void/refund modeling and reconciliation are
+future work. Complete IPN payloads are not persisted.
+
+## Payment Result Status API
+
+```http
+GET /api/v1/payments/:paymentId
+Authorization: Bearer <customer-access-token>
+```
+
+The Payment must belong to the authenticated Customer through
+`Payment -> Booking -> customerId`; another Customer receives 403. The response
+contains only result-page fields and never exposes provider transaction IDs or
+merchant credentials:
+
+```json
+{
+  "id": "uuid",
+  "status": "PENDING",
+  "amount": "250000",
+  "currency": "VND",
+  "booking": {
+    "id": "uuid",
+    "status": "PENDING_PAYMENT"
+  },
+  "expiresAt": "2026-09-29T08:10:00.000Z"
+}
+```
+
+## Authority Boundary and Result UX
+
+```text
+SePay Checkout
+  |-- browser callback -> /payment/result
+  |                         -> authenticated status query/polling
+  |
+  `-- IPN -> GoBook backend
+              -> X-Secret-Key authentication
+              -> merchantReference match
+              -> exact money/currency/status validation
+              -> PaymentAttempt SUCCEEDED
+              -> Payment SUCCEEDED
+```
+
+The browser callback only says which browser route SePay returned to. It is
+never proof of payment. In particular, manually opening
+`/payment/result?paymentId=<valid>&return=success` cannot render a paid state
+while the backend Payment is `PENDING`.
+
+The result page polls roughly every 2.5 seconds while Payment is pending. A
+successful browser hint with pending backend state renders "Đang xác nhận thanh
+toán...". `Payment SUCCEEDED` with `Booking PENDING_PAYMENT` renders that the
+payment was received and booking confirmation is still in progress.
+`Payment SUCCEEDED` with `Booking CONFIRMED` renders final success. Cancel/error
+callbacks still display a successful payment if that is the backend state.
+
+## Current Success Boundary
 
 ```text
 Booking PENDING_PAYMENT + Reservation HELD
   -> Payment PENDING
   -> PaymentAttempt SEPAY PENDING
-  -> display VietQR
-  -> customer transfers money
-  -> verified SePay webhook
+  -> customer pays
+  -> authenticated and validated SePay Gateway IPN
   -> PaymentAttempt SUCCEEDED
   -> Payment SUCCEEDED
+  -> future feat/booking-confirmation
   -> Booking CONFIRMED
   -> Reservation CONFIRMED
 ```
 
-The final four writes must happen transactionally after locking and re-checking
-Payment and Booking.
+Until `feat/booking-confirmation`, `Payment SUCCEEDED` with Booking still
+`PENDING_PAYMENT` is an explicit temporary consistency window. This IPN handler
+must not hide Booking or Reservation confirmation logic.
+
+## IPN Deployment and Sandbox Configuration
+
+Configure SePay Dashboard -> Cổng thanh toán -> Cấu hình -> IPN with:
+
+```text
+URL: https://<public-backend>/api/v1/webhooks/sepay/ipn
+Authentication: SECRET_KEY
+Secret: the deployment's SEPAY_IPN_SECRET value
+```
+
+The endpoint must be publicly reachable over HTTPS. `localhost` is not
+reachable by SePay. Local development may manually use an external HTTPS
+tunnel, but tunnel tooling and temporary URLs do not belong in the repository.
+Never commit the real IPN secret. Checkout signing continues to use the
+separate `SEPAY_SECRET_KEY` configuration variable.
 
 ## Retry and Expiration
 
@@ -248,15 +361,18 @@ Payment PENDING -> EXPIRED
 all related PENDING attempts -> EXPIRED
 ```
 
-The current Booking expiration worker is not changed by this schema task.
+The Booking expiration worker locks the Booking and skips expiration when its
+Payment is already `SUCCEEDED`. This closes the payment-first side of the IPN
+versus expiry race without confirming Booking or Reservation.
 
 ## Concurrency and Consistency
 
-Payment confirmation and Booking expiration may race. Both flows must lock and
-re-check state so only one valid conditional transition wins. Expiration must
-not overwrite `SUCCEEDED`/`CONFIRMED`.
+Payment confirmation and Booking expiration may race. The IPN flow locks and
+re-checks Booking, Payment, and Attempt, uses database time, and acknowledges
+late money without resurrecting an expired/cancelled aggregate. Such events
+are logged for manual reconciliation.
 
-Future consistency rules include:
+Consistency rules include:
 
 - `Booking CONFIRMED` implies `Payment SUCCEEDED`.
 - `Booking EXPIRED` prevents a later Payment success transition.

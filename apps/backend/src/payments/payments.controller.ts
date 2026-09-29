@@ -1,9 +1,18 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiOkResponse,
   ApiNotFoundResponse,
   ApiOperation,
   ApiTags,
@@ -17,6 +26,7 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import type { CurrentUser } from '../auth/types/jwt-payload.type.js';
 import { SWAGGER_ACCESS_TOKEN_SECURITY } from '../swagger.js';
 import { CreateSepayPaymentDto } from './dto/create-sepay-payment.dto.js';
+import { PaymentResultResponseDto } from './dto/payment-result-response.dto.js';
 import { SepayPaymentResponseDto } from './dto/sepay-payment-response.dto.js';
 import { PaymentsService } from './payments.service.js';
 
@@ -52,5 +62,24 @@ export class PaymentsController {
     @Body() dto: CreateSepayPaymentDto,
   ): Promise<SepayPaymentResponseDto> {
     return this.payments.initiateSepay(user.id, dto.bookingId);
+  }
+
+  @Get(':paymentId')
+  @ApiOperation({
+    summary: 'Read authoritative Payment and Booking state',
+    description:
+      'Customer-owned status endpoint for payment result UX. Browser callback query parameters are not proof of payment.',
+  })
+  @ApiOkResponse({ type: PaymentResultResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Bearer access token is missing.' })
+  @ApiForbiddenResponse({
+    description: 'Payment belongs to another customer or role is not CUSTOMER.',
+  })
+  @ApiNotFoundResponse({ description: 'Payment was not found.' })
+  getPayment(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+  ): Promise<PaymentResultResponseDto> {
+    return this.payments.getPaymentResult(user.id, paymentId);
   }
 }

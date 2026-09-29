@@ -16,6 +16,7 @@ import {
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
 import type { SepayPaymentResponseDto } from './dto/sepay-payment-response.dto.js';
+import type { PaymentResultResponseDto } from './dto/payment-result-response.dto.js';
 import {
   PAYMENT_CHECKOUT_PROVIDER,
   type PaymentCheckoutProvider,
@@ -85,6 +86,7 @@ export class PaymentsService {
   ): Promise<SepayPaymentResponseDto> {
     const context = await this.createOrReuseAttempt(customerId, bookingId);
     const checkout = await this.checkoutProvider.createCheckout({
+      paymentId: context.paymentId,
       merchantReference: context.merchantReference,
       amount: context.amount,
       currency: context.currency,
@@ -104,6 +106,46 @@ export class PaymentsService {
       method: checkout.method,
       formFields: checkout.formFields,
       expiresAt: context.expiresAt.toISOString(),
+    };
+  }
+
+  async getPaymentResult(
+    customerId: string,
+    paymentId: string,
+  ): Promise<PaymentResultResponseDto> {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: {
+        id: true,
+        status: true,
+        amount: true,
+        currency: true,
+        booking: {
+          select: {
+            id: true,
+            customerId: true,
+            status: true,
+            expiresAt: true,
+          },
+        },
+      },
+    });
+
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.booking.customerId !== customerId) {
+      throw new ForbiddenException('Payment belongs to another customer');
+    }
+
+    return {
+      id: payment.id,
+      status: payment.status,
+      amount: payment.amount.toString(),
+      currency: payment.currency,
+      booking: {
+        id: payment.booking.id,
+        status: payment.booking.status,
+      },
+      expiresAt: payment.booking.expiresAt?.toISOString() ?? null,
     };
   }
 

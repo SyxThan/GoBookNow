@@ -303,8 +303,9 @@ EXPIRED -> SUCCEEDED
 CANCELLED -> SUCCEEDED
 ```
 
-Generic PATCH không được đặt status tùy ý. Timestamp terminal tương ứng phải
-được service layer ghi cùng transition trong task runtime sau.
+Generic PATCH không được đặt status tùy ý. SePay Gateway IPN hợp lệ ghi
+`PaymentAttempt.succeededAt` và `Payment.succeededAt` cùng một database
+transaction, sử dụng database time.
 
 ---
 
@@ -322,11 +323,16 @@ stateDiagram-v2
 
 # 8. Payment Concurrency Contract
 
-Payment success và Booking expiration có thể chạy đồng thời. Runtime webhook
-sau này phải lock/re-check cả `Payment` và `Booking`; chỉ một conditional
-transition hợp lệ được thắng. Expiration không được ghi đè
-`SUCCEEDED`/`CONFIRMED`, và webhook đến sau khi Booking đã `EXPIRED` không được
-đổi Payment sang `SUCCEEDED`.
+Payment success và Booking expiration có thể chạy đồng thời. SePay IPN lock và
+re-check theo thứ tự `Booking -> Payment -> PaymentAttempt`; chỉ transition từ
+`PENDING` hợp lệ được ghi. IPN đến sau khi Booking/Payment/Attempt đã expired,
+cancelled hoặc failed được acknowledge và log reconciliation, không resurrect
+state terminal.
+
+Trong boundary hiện tại, IPN chỉ chuyển Payment và PaymentAttempt sang
+`SUCCEEDED`. Booking vẫn `PENDING_PAYMENT` và Reservation vẫn `HELD` cho tới
+task `feat/booking-confirmation`. Browser callback không tham gia state machine;
+nó chỉ mở Result UX, sau đó UX đọc trạng thái authoritative từ backend.
 
 ---
 

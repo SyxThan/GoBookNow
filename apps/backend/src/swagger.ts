@@ -42,7 +42,10 @@ export function setupSwagger(
     )
     .addTag('Authentication', 'Register, login, refresh, logout, and identity')
     .addTag('Health', 'Service and database health')
-    .addTag('Payments', 'Payment initiation')
+    .addTag(
+      'Payments',
+      'Payment initiation, authoritative status, and provider IPN',
+    )
     .addTag('General', 'General API endpoints')
     .build();
 

@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import {
   BookingStatus,
+  PaymentStatus,
   ReservationStatus,
 } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../database/prisma/prisma.service.js';
@@ -72,6 +73,47 @@ describe('BookingExpirationService', () => {
       expect(state.reservation.status).toBe(ReservationStatus.HELD);
     } finally {
       loggerError.mockRestore();
+      loggerLog.mockRestore();
+    }
+  });
+
+  it('does not expire a Booking after its Payment has succeeded', async () => {
+    const databaseNow = new Date('2026-09-26T10:00:00.000Z');
+    const transaction = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValueOnce([{ now: databaseNow }])
+        .mockResolvedValueOnce([{ id: 'booking-paid' }]),
+      booking: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'booking-paid',
+          payment: { status: PaymentStatus.SUCCEEDED },
+        }),
+        updateMany: vi.fn(),
+      },
+      reservation: { updateMany: vi.fn() },
+    };
+    const prisma = {
+      $transaction: vi.fn((callback) => callback(transaction)),
+    } as unknown as PrismaService;
+    const config = {
+      get: vi.fn().mockReturnValue(undefined),
+    } as unknown as ConfigService;
+    const service = new BookingExpirationService(prisma, config);
+    const loggerWarn = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const loggerLog = vi
+      .spyOn(Logger.prototype, 'log')
+      .mockImplementation(() => undefined);
+
+    try {
+      const result = await service.sweepExpiredBookings();
+      expect(result.skippedBookings).toBe(1);
+      expect(transaction.reservation.updateMany).not.toHaveBeenCalled();
+      expect(transaction.booking.updateMany).not.toHaveBeenCalled();
+    } finally {
+      loggerWarn.mockRestore();
       loggerLog.mockRestore();
     }
   });

@@ -1,6 +1,7 @@
 export const PAYMENT_CHECKOUT_PROVIDER = Symbol('PAYMENT_CHECKOUT_PROVIDER');
 
 export type CreatePaymentCheckoutInput = Readonly<{
+  paymentId: string;
   merchantReference: string;
   amount: bigint;
   currency: string;

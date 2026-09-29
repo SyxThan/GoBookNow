@@ -40,6 +40,7 @@ describe('Payment initiation (e2e)', () => {
   };
   const prisma = {
     $transaction: vi.fn((callback) => callback(transaction)),
+    payment: { findUnique: vi.fn() },
   };
   const createCheckout = vi.fn().mockResolvedValue({
     paymentUrl: 'https://pay-sandbox.sepay.vn/v1/checkout/init',
@@ -155,6 +156,18 @@ describe('Payment initiation (e2e)', () => {
         signature: 'signed',
       },
     });
+    prisma.payment.findUnique.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      status: PaymentStatus.PENDING,
+      amount: 300_000n,
+      currency: 'VND',
+      booking: {
+        id: BOOKING_ID,
+        customerId: CUSTOMER_ID,
+        status: BookingStatus.PENDING_PAYMENT,
+        expiresAt: EXPIRES_AT,
+      },
+    });
   });
 
   afterAll(async () => {
@@ -201,4 +214,44 @@ describe('Payment initiation (e2e)', () => {
 
   it('rejects an authoritative client amount instead of allowing override', () =>
     initiate({ bookingId: BOOKING_ID, amount: '1' }).expect(400));
+
+  it('returns only the customer-owned authoritative Payment state', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/payments/33333333-3333-4333-8333-333333333333')
+      .set('Authorization', 'Bearer customer-token')
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: '33333333-3333-4333-8333-333333333333',
+      status: 'PENDING',
+      amount: '300000',
+      currency: 'VND',
+      booking: {
+        id: BOOKING_ID,
+        status: 'PENDING_PAYMENT',
+      },
+      expiresAt: EXPIRES_AT.toISOString(),
+    });
+    expect(response.body).not.toHaveProperty('providerTransactionId');
+  });
+
+  it('does not expose another customer Payment', async () => {
+    prisma.payment.findUnique.mockResolvedValueOnce({
+      id: '33333333-3333-4333-8333-333333333333',
+      status: PaymentStatus.PENDING,
+      amount: 300_000n,
+      currency: 'VND',
+      booking: {
+        id: BOOKING_ID,
+        customerId: '44444444-4444-4444-8444-444444444444',
+        status: BookingStatus.PENDING_PAYMENT,
+        expiresAt: EXPIRES_AT,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/payments/33333333-3333-4333-8333-333333333333')
+      .set('Authorization', 'Bearer customer-token')
+      .expect(403);
+  });
 });
