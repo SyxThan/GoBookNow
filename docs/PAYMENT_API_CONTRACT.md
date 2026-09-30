@@ -207,6 +207,51 @@ order.order_invoice_number -> PaymentAttempt.merchantReference
 transaction.transaction_id -> PaymentAttempt.providerTransactionId
 ```
 
+### Strict payment matching
+
+The webhook normalizes provider fields once and delegates identity resolution to
+the reusable `PaymentMatchingService`:
+
+```text
+SePay Gateway IPN
+  -> SePay transaction normalizer
+  -> PaymentMatchingService
+  -> PaymentAttempt (exact merchantReference)
+  -> Payment (Attempt relation)
+  -> Booking (Payment relation)
+```
+
+The matcher uses the following checks, in order:
+
+1. exact `merchantReference` lookup (no trimming, case folding, substring, or
+   prefix/suffix matching);
+2. provider equality (`SEPAY`);
+3. exact integer amount equality across the incoming transaction,
+   `PaymentAttempt`, `Payment`, and immutable Booking total snapshot;
+4. exact currency equality across those records (currently `VND` only);
+5. consistency with the Attempt's existing `providerTransactionId` and global
+   uniqueness of `(provider, providerTransactionId)`;
+6. Payment/Attempt state processability.
+
+**Amount alone is never a matching key.** For example, if Booking A has
+`GBKA / 250000` and Booking B has `GBKB / 250000`, an incoming
+`GBKA / 250000` resolves only to Booking A. An incoming
+`UNKNOWN / 250000` is unmatched; GoBook does not guess A or B and does not
+fall back to amount, Customer, recency, or Booking timestamps.
+
+An exact identity in an expired, cancelled, failed, or otherwise inconsistent
+Payment/Attempt state remains identity-matched but is marked unprocessable.
+This prevents reassignment to another Booking. The same transaction ID on the
+same already-succeeded aggregate is recognized as an idempotent duplicate. A
+different transaction ID on that Attempt, or an ID already attached to another
+SePay Attempt, is a `TRANSACTION_ID_CONFLICT` and is never overwritten.
+
+Unknown references, amount/currency mismatches, late payments, invalid states,
+and transaction collisions are acknowledged and logged with sanitized local
+identifiers as candidates for future manual reconciliation. They are never
+auto-attached. The matching service is read-only; state mutation remains in the
+transactional IPN processor.
+
 GoBook requires `order_status=CAPTURED`, `transaction_type=PAYMENT`, and
 `transaction_status=APPROVED`. Both provider amount fields must exactly match
 both the Attempt and Payment snapshots. VND strings such as `250000` and

@@ -6,6 +6,7 @@ import {
   PaymentStatus,
 } from '../generated/prisma/client.js';
 import type { SepayIpnDto } from './dto/sepay-ipn.dto.js';
+import { PaymentMatchingService } from './payment-matching.service.js';
 import { SepayIpnService } from './sepay-ipn.service.js';
 
 const NOW = new Date('2026-09-29T08:00:00.000Z');
@@ -81,6 +82,8 @@ function setup(
       booking: {
         id: '33333333-3333-4333-8333-333333333333',
         status: overrides.bookingStatus ?? BookingStatus.PENDING_PAYMENT,
+        totalAmount: 250_000n,
+        currency: 'VND',
         expiresAt: EXPIRES_AT,
       },
     },
@@ -126,7 +129,7 @@ function setup(
   } as unknown as PrismaService;
 
   return {
-    service: new SepayIpnService(prisma),
+    service: new SepayIpnService(prisma, new PaymentMatchingService(prisma)),
     runTransaction,
     transaction,
     attempt,

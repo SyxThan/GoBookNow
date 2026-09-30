@@ -2,47 +2,22 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   BookingStatus,
   PaymentAttemptStatus,
-  PaymentProvider,
   PaymentStatus,
   Prisma,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
 import type { SepayIpnDto } from './dto/sepay-ipn.dto.js';
-import { parseExactVndAmount } from './sepay-vnd-amount.js';
+import type { NormalizedPaymentTransaction } from './normalized-payment-transaction.js';
+import {
+  PaymentMatchingService,
+  type MatchedPaymentAttempt,
+  type PaymentMatchResult,
+} from './payment-matching.service.js';
+import { normalizeSepayTransaction } from './sepay-transaction.normalizer.js';
 
 const ORDER_PAID = 'ORDER_PAID';
 const TRANSACTION_VOID = 'TRANSACTION_VOID';
 
-const attemptSelect = {
-  id: true,
-  paymentId: true,
-  provider: true,
-  status: true,
-  amount: true,
-  currency: true,
-  merchantReference: true,
-  providerTransactionId: true,
-  expiresAt: true,
-  payment: {
-    select: {
-      id: true,
-      status: true,
-      amount: true,
-      currency: true,
-      booking: {
-        select: {
-          id: true,
-          status: true,
-          expiresAt: true,
-        },
-      },
-    },
-  },
-} as const satisfies Prisma.PaymentAttemptSelect;
-
-type MatchedAttempt = Prisma.PaymentAttemptGetPayload<{
-  select: typeof attemptSelect;
-}>;
 type DbNowRow = { now: Date };
 type LockedRow = { id: string };
 type SepayIpnTransactionClient = Pick<
@@ -53,6 +28,9 @@ type LocalLogContext = Readonly<{
   attemptId?: string;
   paymentId?: string;
   status?: string;
+  expectedAmount?: string;
+  receivedAmount?: string;
+  currency?: string;
 }>;
 
 export type SepayIpnAcknowledgement = Readonly<{ success: true }>;
@@ -61,7 +39,10 @@ export type SepayIpnAcknowledgement = Readonly<{ success: true }>;
 export class SepayIpnService {
   private readonly logger = new Logger(SepayIpnService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentMatching: PaymentMatchingService,
+  ) {}
 
   async process(dto: SepayIpnDto): Promise<SepayIpnAcknowledgement> {
     if (dto.notification_type === TRANSACTION_VOID) {
@@ -73,15 +54,18 @@ export class SepayIpnService {
       return { success: true };
     }
 
-    let orderAmount: bigint;
-    let transactionAmount: bigint;
-    try {
-      orderAmount = parseExactVndAmount(dto.order.order_amount);
-      transactionAmount = parseExactVndAmount(
-        dto.transaction.transaction_amount,
-      );
-    } catch {
-      this.warn('INVALID_VND_AMOUNT', dto);
+    if (
+      dto.order.order_status !== 'CAPTURED' ||
+      dto.transaction.transaction_type !== 'PAYMENT' ||
+      dto.transaction.transaction_status !== 'APPROVED'
+    ) {
+      this.warn('PROVIDER_SUCCESS_STATUS_MISMATCH', dto);
+      return { success: true };
+    }
+
+    const normalization = normalizeSepayTransaction(dto);
+    if (!normalization.normalized) {
+      this.warn(normalization.reason, dto);
       return { success: true };
     }
 
@@ -90,13 +74,12 @@ export class SepayIpnService {
         this.processOrderPaidInTransaction(
           transaction,
           dto,
-          orderAmount,
-          transactionAmount,
+          normalization.transaction,
         ),
       );
     } catch (error: unknown) {
       if (this.isUniqueConstraintError(error)) {
-        this.warn('PROVIDER_TRANSACTION_COLLISION', dto);
+        this.warn('TRANSACTION_ID_CONFLICT', dto);
         return { success: true };
       }
       throw error;
@@ -108,86 +91,46 @@ export class SepayIpnService {
   private async processOrderPaidInTransaction(
     transaction: SepayIpnTransactionClient,
     dto: SepayIpnDto,
-    orderAmount: bigint,
-    transactionAmount: bigint,
+    input: NormalizedPaymentTransaction,
   ): Promise<void> {
-    const initialMatch = await transaction.paymentAttempt.findUnique({
-      where: { merchantReference: dto.order.order_invoice_number },
-      select: attemptSelect,
-    });
-    if (!initialMatch) {
-      this.warn('UNKNOWN_MERCHANT_REFERENCE', dto);
+    const initialMatch = await this.paymentMatching.match(input, transaction);
+    if (!initialMatch.matched) {
+      this.warnMatch(initialMatch, dto, input);
+      return;
+    }
+    if (!initialMatch.processable) {
+      if (initialMatch.reason !== 'ALREADY_SUCCEEDED') {
+        this.warn(
+          initialMatch.reason,
+          dto,
+          this.localContext(initialMatch.attempt),
+        );
+      }
       return;
     }
 
-    await this.lockRows(transaction, initialMatch);
-    const attempt = await transaction.paymentAttempt.findUnique({
-      where: { merchantReference: dto.order.order_invoice_number },
-      select: attemptSelect,
-    });
-    if (!attempt) throw new Error('Matched PaymentAttempt disappeared');
+    await this.lockRows(transaction, initialMatch.attempt);
+    const lockedMatch = await this.paymentMatching.match(input, transaction);
+    if (!lockedMatch.matched) {
+      if (lockedMatch.reason === 'UNKNOWN_REFERENCE') {
+        throw new Error('Matched PaymentAttempt disappeared');
+      }
+      this.warnMatch(lockedMatch, dto, input);
+      return;
+    }
+    if (!lockedMatch.processable) {
+      if (lockedMatch.reason !== 'ALREADY_SUCCEEDED') {
+        this.warn(
+          lockedMatch.reason,
+          dto,
+          this.localContext(lockedMatch.attempt),
+        );
+      }
+      return;
+    }
 
+    const attempt = lockedMatch.attempt;
     const local = this.localContext(attempt);
-    if (attempt.provider !== PaymentProvider.SEPAY) {
-      this.warn('PAYMENT_PROVIDER_MISMATCH', dto, local);
-      return;
-    }
-    if (attempt.merchantReference !== dto.order.order_invoice_number) {
-      this.warn('MERCHANT_REFERENCE_MISMATCH', dto, local);
-      return;
-    }
-    if (
-      dto.order.order_status !== 'CAPTURED' ||
-      dto.transaction.transaction_type !== 'PAYMENT' ||
-      dto.transaction.transaction_status !== 'APPROVED'
-    ) {
-      this.warn('PROVIDER_SUCCESS_STATUS_MISMATCH', dto, local);
-      return;
-    }
-    if (
-      attempt.currency !== 'VND' ||
-      attempt.payment.currency !== 'VND' ||
-      dto.order.order_currency !== attempt.payment.currency ||
-      dto.transaction.transaction_currency !== attempt.payment.currency ||
-      dto.order.order_currency !== attempt.currency ||
-      dto.transaction.transaction_currency !== attempt.currency
-    ) {
-      this.warn('CURRENCY_MISMATCH', dto, local);
-      return;
-    }
-    if (
-      orderAmount !== attempt.amount ||
-      transactionAmount !== attempt.amount ||
-      orderAmount !== attempt.payment.amount ||
-      transactionAmount !== attempt.payment.amount
-    ) {
-      this.warn('AMOUNT_MISMATCH', dto, local);
-      return;
-    }
-
-    const providerTransactionId = dto.transaction.transaction_id;
-    if (
-      attempt.status === PaymentAttemptStatus.SUCCEEDED &&
-      attempt.payment.status === PaymentStatus.SUCCEEDED &&
-      attempt.providerTransactionId === providerTransactionId
-    ) {
-      return;
-    }
-    if (
-      attempt.providerTransactionId !== null &&
-      attempt.providerTransactionId !== providerTransactionId
-    ) {
-      this.warn('ATTEMPT_TRANSACTION_ID_MISMATCH', dto, local);
-      return;
-    }
-    if (attempt.status !== PaymentAttemptStatus.PENDING) {
-      this.warn('ATTEMPT_TERMINAL_STATE', dto, local);
-      return;
-    }
-    if (attempt.payment.status !== PaymentStatus.PENDING) {
-      this.warn('PAYMENT_TERMINAL_STATE', dto, local);
-      return;
-    }
     if (attempt.payment.booking.status !== BookingStatus.PENDING_PAYMENT) {
       this.warn('BOOKING_NOT_PENDING_PAYMENT', dto, {
         ...local,
@@ -206,24 +149,11 @@ export class SepayIpnService {
       return;
     }
 
-    const collision = await transaction.paymentAttempt.findFirst({
-      where: {
-        provider: PaymentProvider.SEPAY,
-        providerTransactionId,
-        id: { not: attempt.id },
-      },
-      select: { id: true, paymentId: true, status: true },
-    });
-    if (collision) {
-      this.warn('PROVIDER_TRANSACTION_COLLISION', dto, local);
-      return;
-    }
-
     await transaction.paymentAttempt.update({
       where: { id: attempt.id },
       data: {
         status: PaymentAttemptStatus.SUCCEEDED,
-        providerTransactionId,
+        providerTransactionId: input.providerTransactionId,
         succeededAt: now,
       },
     });
@@ -242,13 +172,14 @@ export class SepayIpnService {
       providerTransactionId: this.safe(dto.transaction.transaction_id),
       attemptId: attempt.id,
       paymentId: attempt.payment.id,
+      bookingId: attempt.payment.booking.id,
       status: PaymentStatus.SUCCEEDED,
     });
   }
 
   private async lockRows(
     transaction: Pick<Prisma.TransactionClient, '$queryRaw'>,
-    attempt: MatchedAttempt,
+    attempt: MatchedPaymentAttempt,
   ): Promise<void> {
     const bookingRows = await transaction.$queryRaw<LockedRow[]>(Prisma.sql`
       SELECT "id" FROM "bookings"
@@ -281,12 +212,31 @@ export class SepayIpnService {
     return row.now;
   }
 
-  private localContext(attempt: MatchedAttempt): LocalLogContext {
+  private localContext(attempt: MatchedPaymentAttempt): LocalLogContext {
     return {
       attemptId: attempt.id,
       paymentId: attempt.payment.id,
       status: `${attempt.status}/${attempt.payment.status}`,
     };
+  }
+
+  private warnMatch(
+    result: Extract<PaymentMatchResult, { matched: false }>,
+    dto: SepayIpnDto,
+    input: NormalizedPaymentTransaction,
+  ): void {
+    const local = result.attempt
+      ? {
+          ...this.localContext(result.attempt),
+          expectedAmount: result.attempt.amount.toString(),
+          receivedAmount: input.amount.toString(),
+          currency: input.currency,
+        }
+      : {
+          receivedAmount: input.amount.toString(),
+          currency: input.currency,
+        };
+    this.warn(result.reason, dto, local);
   }
 
   private warn(
