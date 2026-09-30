@@ -41,7 +41,7 @@ export class SepayPaymentProvider implements PaymentCheckoutProvider {
         currency: input.currency,
         order_description: input.description,
         customer_id: input.customerId,
-        ...this.getCallbackFields(),
+        ...this.getCallbackFields(input.paymentId),
       });
 
       return {
@@ -77,7 +77,7 @@ export class SepayPaymentProvider implements PaymentCheckoutProvider {
     return value;
   }
 
-  private getCallbackFields(): Partial<{
+  private getCallbackFields(paymentId: string): Partial<{
     success_url: string;
     error_url: string;
     cancel_url: string;
@@ -91,7 +91,19 @@ export class SepayPaymentProvider implements PaymentCheckoutProvider {
     return Object.fromEntries(
       callbacks.flatMap(([field, configName]) => {
         const value = this.config.get<string>(configName)?.trim();
-        return value ? [[field, value]] : [];
+        if (!value) return [];
+
+        const callback = new URL(value);
+        callback.searchParams.set('paymentId', paymentId);
+        callback.searchParams.set(
+          'return',
+          field === 'success_url'
+            ? 'success'
+            : field === 'error_url'
+              ? 'error'
+              : 'cancel',
+        );
+        return [[field, callback.toString()]];
       }),
     );
   }

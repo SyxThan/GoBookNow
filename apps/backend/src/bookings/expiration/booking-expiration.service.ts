@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   BookingStatus,
+  PaymentStatus,
   Prisma,
   ReservationStatus,
 } from '../../generated/prisma/client.js';
@@ -162,9 +163,18 @@ export class BookingExpirationService {
         status: BookingStatus.PENDING_PAYMENT,
         expiresAt: { not: null, lte: now },
       },
-      select: { id: true },
+      select: {
+        id: true,
+        payment: { select: { status: true } },
+      },
     });
     if (!booking) {
+      return { expired: false, expiredReservations: 0 };
+    }
+    if (booking.payment?.status === PaymentStatus.SUCCEEDED) {
+      this.logger.warn(
+        `Booking expiration skipped bookingId=${bookingId} reason=PAYMENT_SUCCEEDED`,
+      );
       return { expired: false, expiredReservations: 0 };
     }
 

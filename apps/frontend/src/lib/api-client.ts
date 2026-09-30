@@ -69,6 +69,18 @@ export type ServiceSearchResponse = {
   totalPages: number;
 };
 
+export type PaymentResult = {
+  id: string;
+  status: "PENDING" | "SUCCEEDED" | "EXPIRED" | "CANCELLED";
+  amount: string;
+  currency: string;
+  booking: {
+    id: string;
+    status: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  };
+  expiresAt: string | null;
+};
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -215,4 +227,18 @@ export async function apiDownload(
   }
   if (!response.ok) throw await readError(response);
   return response.blob();
+}
+
+export function getPaymentResult(
+  paymentId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  signal?: AbortSignal,
+): Promise<PaymentResult> {
+  return apiRequest<PaymentResult>(
+    `/payments/${encodeURIComponent(paymentId)}`,
+    { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
 }

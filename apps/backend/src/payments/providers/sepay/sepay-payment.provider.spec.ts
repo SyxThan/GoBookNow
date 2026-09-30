@@ -28,6 +28,7 @@ function config(values: Record<string, string | undefined>): ConfigService {
 }
 
 const checkoutInput = {
+  paymentId: '11111111-1111-4111-8111-111111111111',
   merchantReference: 'GBKABCDEF1234567890',
   amount: 300_000n,
   currency: 'VND',
@@ -77,7 +78,8 @@ describe('SepayPaymentProvider', () => {
       currency: 'VND',
       order_description: checkoutInput.description,
       customer_id: checkoutInput.customerId,
-      success_url: 'https://example.test/payment/success',
+      success_url:
+        'https://example.test/payment/success?paymentId=11111111-1111-4111-8111-111111111111&return=success',
     });
     expect(result).toEqual({
       paymentUrl: 'https://pay-sandbox.sepay.vn/v1/checkout/init',
@@ -92,6 +94,31 @@ describe('SepayPaymentProvider', () => {
         signature: 'signed-value',
       },
     });
+  });
+
+  it('adds the payment identifier and non-authoritative hint to every callback', async () => {
+    const provider = new SepayPaymentProvider(
+      config({
+        SEPAY_MERCHANT_ID: 'merchant-test',
+        SEPAY_SECRET_KEY: 'test-secret',
+        SEPAY_SUCCESS_URL: 'https://frontend.test/payment/result?source=sepay',
+        SEPAY_ERROR_URL: 'https://frontend.test/payment/result',
+        SEPAY_CANCEL_URL: 'https://frontend.test/payment/result',
+      }),
+    );
+
+    await provider.createCheckout(checkoutInput);
+
+    expect(sdk.initOneTimePaymentFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url:
+          'https://frontend.test/payment/result?source=sepay&paymentId=11111111-1111-4111-8111-111111111111&return=success',
+        error_url:
+          'https://frontend.test/payment/result?paymentId=11111111-1111-4111-8111-111111111111&return=error',
+        cancel_url:
+          'https://frontend.test/payment/result?paymentId=11111111-1111-4111-8111-111111111111&return=cancel',
+      }),
+    );
   });
 
   it('defaults to sandbox and allows omitted callback URLs', async () => {

@@ -178,6 +178,7 @@ describe('PaymentsService', () => {
       }),
     );
     expect(createCheckout).toHaveBeenCalledWith({
+      paymentId: 'payment-1',
       merchantReference: 'GBKABCDEF1234567890',
       amount: 300_000n,
       currency: 'VND',
