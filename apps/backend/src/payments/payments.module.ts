@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { PaymentsController } from './payments.controller.js';
+import { PaymentMatchingService } from './payment-matching.service.js';
 import { PaymentsService } from './payments.service.js';
 import { SepayIpnAuthGuard } from './sepay-ipn-auth.guard.js';
 import { SepayIpnController } from './sepay-ipn.controller.js';
@@ -13,6 +14,7 @@ import { SepayPaymentProvider } from './providers/sepay/sepay-payment.provider.j
   controllers: [PaymentsController, SepayIpnController],
   providers: [
     PaymentsService,
+    PaymentMatchingService,
     SepayIpnAuthGuard,
     SepayIpnService,
     SepayPaymentProvider,
@@ -21,6 +23,6 @@ import { SepayPaymentProvider } from './providers/sepay/sepay-payment.provider.j
       useExisting: SepayPaymentProvider,
     },
   ],
-  exports: [PaymentsService],
+  exports: [PaymentsService, PaymentMatchingService],
 })
 export class PaymentsModule {}

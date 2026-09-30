@@ -2,6 +2,14 @@ import { type INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
+import { PrismaService } from '../src/database/prisma/prisma.service.js';
+import {
+  BookingStatus,
+  PaymentAttemptStatus,
+  PaymentProvider,
+  PaymentStatus,
+} from '../src/generated/prisma/client.js';
+import { PaymentMatchingService } from '../src/payments/payment-matching.service.js';
 import { SepayIpnAuthGuard } from '../src/payments/sepay-ipn-auth.guard.js';
 import { SepayIpnController } from '../src/payments/sepay-ipn.controller.js';
 import { SepayIpnService } from '../src/payments/sepay-ipn.service.js';
@@ -100,5 +108,207 @@ describe('SePay Payment Gateway IPN authentication (e2e)', () => {
       transaction: { transaction_id: 'SEPAY-TXN-001' },
     }).expect(400);
     expect(processIpn).not.toHaveBeenCalled();
+  });
+});
+
+describe('SePay strict payment matching (e2e)', () => {
+  let app: INestApplication;
+  let rawCall = 0;
+
+  const makeAttempt = (suffix: 'a' | 'b', merchantReference: string) => ({
+    id: `attempt-${suffix}`,
+    paymentId: `payment-${suffix}`,
+    provider: PaymentProvider.SEPAY,
+    status: PaymentAttemptStatus.PENDING,
+    amount: 250_000n,
+    currency: 'VND',
+    merchantReference,
+    providerTransactionId: null as string | null,
+    expiresAt: new Date('2026-10-01T00:10:00.000Z'),
+    payment: {
+      id: `payment-${suffix}`,
+      status: PaymentStatus.PENDING,
+      amount: 250_000n,
+      currency: 'VND',
+      booking: {
+        id: `booking-${suffix}`,
+        status: BookingStatus.PENDING_PAYMENT,
+        totalAmount: 250_000n,
+        currency: 'VND',
+        expiresAt: new Date('2026-10-01T00:10:00.000Z'),
+      },
+    },
+  });
+
+  let attemptA = makeAttempt('a', 'GBKA');
+  let attemptB = makeAttempt('b', 'GBKB');
+  const attempts = () => [attemptA, attemptB];
+  const transaction = {
+    $queryRaw: vi.fn(() => {
+      rawCall += 1;
+      return Promise.resolve(
+        rawCall % 4 === 0
+          ? [{ now: new Date('2026-10-01T00:00:00.000Z') }]
+          : [{ id: 'locked' }],
+      );
+    }),
+    paymentAttempt: {
+      findUnique: vi.fn(({ where }: { where: { merchantReference: string } }) =>
+        Promise.resolve(
+          attempts().find(
+            ({ merchantReference }) =>
+              merchantReference === where.merchantReference,
+          ) ?? null,
+        ),
+      ),
+      findFirst: vi.fn(
+        ({
+          where,
+        }: {
+          where: {
+            provider: PaymentProvider;
+            providerTransactionId: string;
+            id: { not: string };
+          };
+        }) =>
+          Promise.resolve(
+            attempts().find(
+              (attempt) =>
+                attempt.provider === where.provider &&
+                attempt.providerTransactionId === where.providerTransactionId &&
+                attempt.id !== where.id.not,
+            ) ?? null,
+          ),
+      ),
+      update: vi.fn(
+        ({ where, data }: { where: { id: string }; data: object }) => {
+          const attempt = attempts().find(({ id }) => id === where.id)!;
+          Object.assign(attempt, data);
+          return Promise.resolve(attempt);
+        },
+      ),
+    },
+    payment: {
+      update: vi.fn(
+        ({ where, data }: { where: { id: string }; data: object }) => {
+          const payment = attempts().find(
+            (attempt) => attempt.payment.id === where.id,
+          )!.payment;
+          Object.assign(payment, data);
+          return Promise.resolve(payment);
+        },
+      ),
+    },
+  };
+  const prisma = {
+    $transaction: vi.fn(
+      (callback: (client: typeof transaction) => Promise<void>) =>
+        callback(transaction),
+    ),
+  };
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          ignoreEnvFile: true,
+          load: [() => ({ SEPAY_IPN_SECRET: IPN_SECRET })],
+        }),
+      ],
+      controllers: [SepayIpnController],
+      providers: [
+        SepayIpnAuthGuard,
+        PaymentMatchingService,
+        SepayIpnService,
+        { provide: PrismaService, useValue: prisma },
+      ],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    app.setGlobalPrefix('api/v1');
+    await app.init();
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    rawCall = 0;
+    attemptA = makeAttempt('a', 'GBKA');
+    attemptB = makeAttempt('b', 'GBKB');
+  });
+
+  afterAll(async () => app.close());
+
+  const sendMatchingPayload = (
+    overrides: Partial<{
+      merchantReference: string;
+      amount: string;
+      transactionId: string;
+    }> = {},
+  ) => {
+    const body = validPayload();
+    body.order.order_invoice_number = overrides.merchantReference ?? 'GBKA';
+    body.order.order_amount = overrides.amount ?? '250000.00';
+    body.transaction.transaction_amount = overrides.amount ?? '250000';
+    body.transaction.transaction_id = overrides.transactionId ?? 'TX1';
+    body.order.custom_data = {
+      bookingId: 'booking-b',
+      paymentId: 'payment-b',
+      customerId: 'customer-b',
+    };
+
+    return request(app.getHttpServer())
+      .post('/api/v1/webhooks/sepay/ipn')
+      .set('X-Secret-Key', IPN_SECRET)
+      .send(body);
+  };
+
+  it('matches exact reference A only, despite equal amounts and manipulated custom data', async () => {
+    await sendMatchingPayload().expect(200, { success: true });
+
+    expect(transaction.paymentAttempt.update).toHaveBeenCalledOnce();
+    expect(transaction.paymentAttempt.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'attempt-a' } }),
+    );
+    expect(transaction.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'payment-a' } }),
+    );
+    expect(attemptB.status).toBe(PaymentAttemptStatus.PENDING);
+    expect(attemptB.payment.status).toBe(PaymentStatus.PENDING);
+  });
+
+  it('does not mark any Payment successful for an unknown reference', async () => {
+    await sendMatchingPayload({ merchantReference: 'UNKNOWN' }).expect(200, {
+      success: true,
+    });
+
+    expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
+    expect(transaction.payment.update).not.toHaveBeenCalled();
+  });
+
+  it('does not mark any Payment successful for a wrong amount', async () => {
+    await sendMatchingPayload({ amount: '300000' }).expect(200, {
+      success: true,
+    });
+
+    expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
+    expect(transaction.payment.update).not.toHaveBeenCalled();
+  });
+
+  it('handles duplicate delivery idempotently without a second update', async () => {
+    await sendMatchingPayload().expect(200, { success: true });
+    await sendMatchingPayload().expect(200, { success: true });
+
+    expect(transaction.paymentAttempt.update).toHaveBeenCalledOnce();
+    expect(transaction.payment.update).toHaveBeenCalledOnce();
+    expect(attemptA.providerTransactionId).toBe('TX1');
+    expect(attemptB.providerTransactionId).toBeNull();
   });
 });
