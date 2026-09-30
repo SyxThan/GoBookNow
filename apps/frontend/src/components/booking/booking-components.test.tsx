@@ -111,11 +111,22 @@ describe("held booking", () => {
         },
       ],
     };
-    render(<BookingHeldCard booking={booking} priceChanged onExpired={vi.fn()} />);
+    render(
+      <BookingHeldCard
+        booking={booking}
+        priceChanged
+        paymentState={{ step: "READY" }}
+        onPay={vi.fn()}
+        onExpired={vi.fn()}
+      />,
+    );
     expect(screen.getByText("GBK-TEST")).toBeVisible();
     expect(screen.getByText("120.000 ₫")).toBeVisible();
-    expect(screen.getByText("240.000 ₫")).toBeVisible();
+    expect(screen.getAllByText("240.000 ₫")).toHaveLength(2);
     expect(screen.getByText("HELD")).toBeVisible();
     expect(screen.getByText(/Giá đã được cập nhật/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Thanh toán với SePay" }),
+    ).toBeEnabled();
   });
 });

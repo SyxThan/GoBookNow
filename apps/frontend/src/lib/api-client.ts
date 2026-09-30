@@ -85,6 +85,20 @@ export type PaymentResult = {
   expiresAt: string | null;
 };
 
+export type SePayInitiationResponse = {
+  paymentId: string;
+  attemptId: string;
+  provider: "SEPAY";
+  status: "PENDING";
+  amount: string;
+  currency: string;
+  merchantReference: string;
+  paymentUrl: string;
+  method: "POST";
+  formFields: Record<string, string>;
+  expiresAt: string;
+};
+
 export type PublicServiceDetail = {
   id: string;
   kind: ServiceKind;
@@ -150,7 +164,7 @@ export type CreateBookingHoldItem = {
 export type BookingHoldResponse = {
   id: string;
   bookingCode: string;
-  status: "PENDING_PAYMENT";
+  status: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
   currency: string;
   subtotalAmount: string;
   totalAmount: string;
@@ -331,6 +345,22 @@ export function createBookingHold(
       method: "POST",
       headers: { "Idempotency-Key": input.idempotencyKey },
       body: JSON.stringify({ items: input.items }),
+    },
+    accessToken,
+    onToken,
+  );
+}
+
+export function initiateSePayPayment(
+  bookingId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<SePayInitiationResponse> {
+  return apiRequest<SePayInitiationResponse>(
+    "/payments/sepay",
+    {
+      method: "POST",
+      body: JSON.stringify({ bookingId }),
     },
     accessToken,
     onToken,

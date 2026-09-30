@@ -3,15 +3,24 @@
 import { useEffect, useRef } from "react";
 import type { BookingHoldResponse } from "@/lib/api-client";
 import { useCountdown } from "@/hooks/use-countdown";
+import {
+  canInitiateSePay,
+  isPositiveIntegerAmount,
+  type CheckoutPaymentState,
+} from "@/lib/checkout-payment-state";
 import { formatDate, formatMoney, formatTime } from "@/lib/format";
 
 export function BookingHeldCard({
   booking,
   priceChanged,
+  paymentState,
+  onPay,
   onExpired,
 }: {
   booking: BookingHoldResponse;
   priceChanged: boolean;
+  paymentState: CheckoutPaymentState;
+  onPay: () => void;
   onExpired: () => void;
 }) {
   const countdown = useCountdown(booking.expiresAt);
@@ -31,6 +40,13 @@ export function BookingHeldCard({
     countdown.seconds,
   ).padStart(2, "0")}`;
   const urgent = countdown.remainingMs > 0 && countdown.remainingMs <= 120_000;
+  const freeBooking = !isPositiveIntegerAmount(booking.totalAmount);
+  const canPay = canInitiateSePay({
+    bookingStatus: booking.status,
+    totalAmount: booking.totalAmount,
+    isExpired: countdown.isExpired,
+    paymentState,
+  });
 
   return (
     <section className="panel overflow-hidden" aria-labelledby="held-title">
@@ -73,25 +89,75 @@ export function BookingHeldCard({
           )}
         </dl>
 
-        <aside className="rounded-2xl border border-white/10 bg-slate-950 p-5 text-center">
-          <p className="text-sm text-slate-400">Hoàn tất thanh toán trong</p>
+        <aside className="rounded-2xl border border-white/10 bg-slate-950 p-5">
+          <p className="eyebrow">Thanh toán</p>
+          <div className="mt-4 border-b border-white/10 pb-4">
+            <p className="text-sm text-slate-400">Tổng tiền</p>
+            <p className="mt-1 text-2xl font-semibold text-teal-200">
+              {formatMoney(booking.totalAmount, booking.currency)}
+            </p>
+          </div>
+          <div className="border-b border-white/10 py-4">
+            <p className="text-sm text-slate-400">Phương thức</p>
+            <p className="mt-1 font-medium text-white">
+              SePay / Chuyển khoản ngân hàng
+            </p>
+          </div>
+          <p className="mt-4 text-sm text-slate-400">Giữ chỗ còn</p>
           <p
-            className={`mt-3 font-mono text-5xl font-semibold tabular-nums ${
+            className={`mt-2 text-center font-mono text-5xl font-semibold tabular-nums ${
               urgent ? "text-amber-300" : "text-white"
             }`}
-            aria-live="polite"
             aria-label={`Thời gian giữ chỗ còn lại ${countdown.minutes} phút ${countdown.seconds} giây`}
           >
             {time}
           </p>
           {urgent && (
-            <p className="mt-3 text-sm font-medium text-amber-200">
+            <p className="mt-3 text-center text-sm font-medium text-amber-200" role="status">
               Thời gian giữ chỗ sắp hết.
             </p>
           )}
-          <button type="button" className="primary-button mt-6 w-full" disabled>
-            Thanh toán sẽ có ở bước tiếp theo
+          {countdown.isExpired && (
+            <p className="mt-4 text-sm font-medium text-rose-200" role="status">
+              Phiên giữ chỗ đã hết hạn.
+            </p>
+          )}
+          {freeBooking && (
+            <p className="mt-4 text-sm text-amber-100" role="status">
+              Booking miễn phí chưa có luồng xác nhận tự động qua SePay.
+            </p>
+          )}
+          {paymentState.step === "ERROR" && (
+            <p
+              id="payment-initiation-error"
+              className="mt-4 rounded-xl border border-rose-300/30 bg-rose-300/10 p-3 text-sm text-rose-100"
+              role="alert"
+            >
+              {paymentState.message}
+            </p>
+          )}
+          <button
+            type="button"
+            className="primary-button mt-6 w-full"
+            disabled={!canPay}
+            aria-describedby={
+              paymentState.step === "ERROR"
+                ? "payment-initiation-error payment-provider-note"
+                : "payment-provider-note"
+            }
+            onClick={onPay}
+          >
+            {paymentState.step === "INITIATING_PAYMENT"
+              ? "Đang khởi tạo thanh toán..."
+              : paymentState.step === "REDIRECTING"
+                ? "Đang chuyển đến SePay..."
+                : paymentState.step === "ERROR" && paymentState.retryable
+                  ? "Thử thanh toán lại"
+                  : "Thanh toán với SePay"}
           </button>
+          <p id="payment-provider-note" className="mt-3 text-xs leading-5 text-slate-500">
+            Bạn sẽ được chuyển sang trang thanh toán bảo mật của SePay để quét mã QR.
+          </p>
         </aside>
       </div>
     </section>

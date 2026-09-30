@@ -18,6 +18,7 @@ import { QuantitySelector } from "@/components/booking/quantity-selector";
 import {
   createBookingHold,
   getPublicService,
+  initiateSePayPayment,
   listPublicSlots,
   login,
   type BookingHoldResponse,
@@ -35,6 +36,12 @@ import {
   saveHeldBooking,
   type CheckoutDraft,
 } from "@/lib/booking-storage";
+import {
+  canInitiateSePay,
+  type CheckoutPaymentState,
+} from "@/lib/checkout-payment-state";
+import { toFriendlyPaymentError } from "@/lib/payment-errors";
+import { submitExternalPaymentForm } from "@/lib/payment-form";
 import { isFutureOpenSlot } from "@/lib/slots";
 
 type CheckoutState =
@@ -62,7 +69,11 @@ export function BookingCheckoutClient() {
   const [state, setState] = useState<CheckoutState>({ step: "SUMMARY" });
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [paymentState, setPaymentState] = useState<CheckoutPaymentState>({
+    step: "READY",
+  });
   const submitGuard = useRef(false);
+  const paymentSubmitGuard = useRef(false);
 
   const setAccessToken = useCallback((token: string | null) => {
     setAccessTokenState(token);
@@ -125,6 +136,7 @@ export function BookingCheckoutClient() {
     retry: false,
     onSuccess: (booking, variables) => {
       submitGuard.current = false;
+      setPaymentState({ step: "READY" });
       clearHoldAttempt(window.sessionStorage);
       saveHeldBooking(
         { serviceSlug: variables.draft.serviceSlug, booking },
@@ -156,6 +168,52 @@ export function BookingCheckoutClient() {
     },
   });
 
+  const paymentMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      initiateSePayPayment(bookingId, accessToken, setAccessToken),
+    retry: false,
+    onSuccess: (payment) => {
+      setPaymentState({ step: "REDIRECTING", payment });
+    },
+    onError: (error) => {
+      paymentSubmitGuard.current = false;
+      const friendly = toFriendlyPaymentError(error);
+      if (friendly.expired) {
+        setState((current) =>
+          current.step === "HELD"
+            ? { step: "EXPIRED", booking: current.booking }
+            : current,
+        );
+        return;
+      }
+      setPaymentState({
+        step: "ERROR",
+        message: friendly.message,
+        retryable: friendly.retryable,
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (paymentState.step !== "REDIRECTING") return;
+
+    const timer = window.setTimeout(() => {
+      try {
+        submitExternalPaymentForm(paymentState.payment);
+      } catch {
+        paymentSubmitGuard.current = false;
+        setPaymentState({
+          step: "ERROR",
+          message:
+            "Dữ liệu chuyển hướng thanh toán không hợp lệ. Vui lòng thử lại sau.",
+          retryable: false,
+        });
+      }
+    }, 50);
+
+    return () => window.clearTimeout(timer);
+  }, [paymentState]);
+
   const submitHold = () => {
     if (!draft || !slot || holdMutation.isPending || submitGuard.current) return;
     if (!accessToken) {
@@ -172,6 +230,27 @@ export function BookingCheckoutClient() {
     });
   };
 
+  const submitPayment = (booking: BookingHoldResponse) => {
+    const isExpired =
+      !booking.expiresAt ||
+      new Date(booking.expiresAt).getTime() <= Date.now();
+    if (
+      paymentSubmitGuard.current ||
+      !canInitiateSePay({
+        bookingStatus: booking.status,
+        totalAmount: booking.totalAmount,
+        isExpired,
+        paymentState,
+      })
+    ) {
+      return;
+    }
+
+    paymentSubmitGuard.current = true;
+    setPaymentState({ step: "INITIATING_PAYMENT" });
+    paymentMutation.mutate(booking.id);
+  };
+
   const updateQuantity = (quantity: number) => {
     if (!draft) return;
     const next = { ...draft, quantity };
@@ -182,6 +261,7 @@ export function BookingCheckoutClient() {
   };
 
   const handleExpired = useCallback(() => {
+    paymentSubmitGuard.current = false;
     setState((current) =>
       current.step === "HELD"
         ? { step: "EXPIRED", booking: current.booking }
@@ -192,6 +272,7 @@ export function BookingCheckoutClient() {
   const retryExpired = () => {
     if (!draft) return;
     clearHeldBooking(window.sessionStorage);
+    setPaymentState({ step: "READY" });
     replaceHoldAttempt(draft, window.sessionStorage);
     void queryClient.invalidateQueries({
       queryKey: ["public-slots", draft.serviceId],
@@ -220,6 +301,8 @@ export function BookingCheckoutClient() {
         <BookingHeldCard
           booking={state.booking}
           priceChanged={state.priceChanged}
+          paymentState={paymentState}
+          onPay={() => submitPayment(state.booking)}
           onExpired={handleExpired}
         />
       </CheckoutShell>

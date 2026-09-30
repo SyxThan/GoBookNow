@@ -6,6 +6,7 @@ import {
   ApiError,
   createBookingHold,
   getPublicService,
+  initiateSePayPayment,
   listPublicSlots,
   type BookingHoldResponse,
   type PublicServiceDetail,
@@ -14,8 +15,11 @@ import {
 import {
   replaceHoldAttempt,
   saveCheckoutDraft,
+  saveHeldBooking,
   type CheckoutDraft,
 } from "@/lib/booking-storage";
+import { submitExternalPaymentForm } from "@/lib/payment-form";
+import { formatTime } from "@/lib/format";
 import { BookingCheckoutClient } from "./booking-checkout-client";
 
 const routerPush = vi.fn();
@@ -46,10 +50,15 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     ...actual,
     createBookingHold: vi.fn(),
     getPublicService: vi.fn(),
+    initiateSePayPayment: vi.fn(),
     listPublicSlots: vi.fn(),
     login: vi.fn(),
   };
 });
+
+vi.mock("@/lib/payment-form", () => ({
+  submitExternalPaymentForm: vi.fn(),
+}));
 
 const draft: CheckoutDraft = {
   serviceId: "service-a",
@@ -137,7 +146,9 @@ describe("BookingCheckoutClient hold behavior", () => {
     routerPush.mockReset();
     vi.mocked(createBookingHold).mockReset();
     vi.mocked(getPublicService).mockReset();
+    vi.mocked(initiateSePayPayment).mockReset();
     vi.mocked(listPublicSlots).mockReset();
+    vi.mocked(submitExternalPaymentForm).mockReset();
     saveCheckoutDraft(draft, window.sessionStorage);
     replaceHoldAttempt(draft, window.sessionStorage, () => "stable-key");
     window.sessionStorage.setItem("gobook.accessToken", "customer-token");
@@ -202,5 +213,115 @@ describe("BookingCheckoutClient hold behavior", () => {
     expect(await screen.findByText("Không còn đủ chỗ cho số lượng bạn chọn.")).toBeVisible();
     await waitFor(() => expect(listPublicSlots).toHaveBeenCalledTimes(2));
     expect(screen.queryByText("Booking của bạn đang được giữ tạm thời.")).toBeNull();
+  });
+
+  it("renders snapshot checkout and submits one SePay POST-form contract", async () => {
+    saveHeldBooking(
+      { serviceSlug: draft.serviceSlug, booking },
+      window.sessionStorage,
+    );
+    vi.mocked(initiateSePayPayment).mockResolvedValue({
+      paymentId: "payment-a",
+      attemptId: "attempt-a",
+      provider: "SEPAY",
+      status: "PENDING",
+      amount: "240000",
+      currency: "VND",
+      merchantReference: "GBKABC",
+      paymentUrl: "https://pay-sandbox.sepay.vn/v1/checkout/init",
+      method: "POST",
+      formFields: {
+        order_amount: "240000",
+        signature: "signed-value",
+      },
+      expiresAt: booking.expiresAt!,
+    });
+    renderCheckout();
+
+    expect(await screen.findByText("120.000 ₫")).toBeVisible();
+    expect(screen.getAllByText("240.000 ₫").length).toBeGreaterThan(0);
+    expect(screen.getByText("Massage 60 phút")).toBeVisible();
+    expect(
+      screen.getByText(
+        `${formatTime(booking.items[0]!.startAt)} – ${formatTime(
+          booking.items[0]!.endAt,
+        )}`,
+      ),
+    ).toBeVisible();
+
+    const pay = screen.getByRole("button", { name: "Thanh toán với SePay" });
+    fireEvent.click(pay);
+    fireEvent.click(pay);
+
+    await waitFor(() =>
+      expect(initiateSePayPayment).toHaveBeenCalledTimes(1),
+    );
+    expect(initiateSePayPayment).toHaveBeenCalledWith(
+      booking.id,
+      "customer-token",
+      expect.any(Function),
+    );
+    await waitFor(() =>
+      expect(submitExternalPaymentForm).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentId: "payment-a", method: "POST" }),
+      ),
+    );
+  });
+
+  it("allows a safe retry after an ambiguous initiation network failure", async () => {
+    saveHeldBooking(
+      { serviceSlug: draft.serviceSlug, booking },
+      window.sessionStorage,
+    );
+    vi.mocked(initiateSePayPayment)
+      .mockRejectedValueOnce(new TypeError("timeout"))
+      .mockResolvedValueOnce({
+        paymentId: "backend-controlled-payment",
+        attemptId: "backend-controlled-attempt",
+        provider: "SEPAY",
+        status: "PENDING",
+        amount: booking.totalAmount,
+        currency: booking.currency,
+        merchantReference: "GBKREUSED",
+        paymentUrl: "https://pay.sepay.vn/v1/checkout/init",
+        method: "POST",
+        formFields: { signature: "signed-value" },
+        expiresAt: booking.expiresAt!,
+      });
+    renderCheckout();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Thanh toán với SePay" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Thử thanh toán lại" }),
+    );
+
+    await waitFor(() =>
+      expect(initiateSePayPayment).toHaveBeenCalledTimes(2),
+    );
+    expect(vi.mocked(initiateSePayPayment).mock.calls[0]?.[0]).toBe(booking.id);
+    expect(vi.mocked(initiateSePayPayment).mock.calls[1]?.[0]).toBe(booking.id);
+  });
+
+  it("shows the dedicated SePay unavailable message", async () => {
+    saveHeldBooking(
+      { serviceSlug: draft.serviceSlug, booking },
+      window.sessionStorage,
+    );
+    vi.mocked(initiateSePayPayment).mockRejectedValueOnce(
+      new ApiError(503, "provider internal details", "SEPAY_UNAVAILABLE"),
+    );
+    renderCheckout();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Thanh toán với SePay" }),
+    );
+    expect(
+      await screen.findByText(
+        "SePay hiện tạm thời không khả dụng. Vui lòng thử lại sau.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText("provider internal details")).toBeNull();
   });
 });
