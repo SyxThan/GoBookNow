@@ -113,7 +113,7 @@ Customer bắt đầu thanh toán.
 Điều kiện:
 
 ```text
-Reservation ACTIVE
+Reservation HELD
 expires_at > now
 ```
 
@@ -194,8 +194,8 @@ Vendor/Admin hủy theo business rule.
 ## States
 
 ```text
-ACTIVE
-CONSUMED
+HELD
+CONFIRMED
 EXPIRED
 RELEASED
 ```
@@ -203,8 +203,8 @@ RELEASED
 Flow:
 
 ```text
-ACTIVE
- ├──→ CONSUMED
+HELD
+ ├──→ CONFIRMED
  ├──→ EXPIRED
  └──→ RELEASED
 ```
@@ -215,13 +215,13 @@ ACTIVE
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ACTIVE
+    [*] --> HELD
 
-    ACTIVE --> CONSUMED: Payment success
-    ACTIVE --> EXPIRED: TTL reached
-    ACTIVE --> RELEASED: Booking cancelled
+    HELD --> CONFIRMED: Atomic payment settlement
+    HELD --> EXPIRED: TTL reached
+    HELD --> RELEASED: Booking cancelled
 
-    CONSUMED --> [*]
+    CONFIRMED --> [*]
     EXPIRED --> [*]
     RELEASED --> [*]
 ```
@@ -230,7 +230,7 @@ stateDiagram-v2
 
 # 5. Reservation Rules
 
-## ACTIVE → CONSUMED
+## HELD → CONFIRMED
 
 Khi:
 
@@ -242,7 +242,7 @@ Nghĩa là chỗ giữ tạm đã trở thành booking thật.
 
 ---
 
-## ACTIVE → EXPIRED
+## HELD → EXPIRED
 
 Khi:
 
@@ -254,7 +254,7 @@ Capacity được trả lại.
 
 ---
 
-## ACTIVE → RELEASED
+## HELD → RELEASED
 
 Khi:
 
@@ -323,16 +323,17 @@ stateDiagram-v2
 
 # 8. Payment Concurrency Contract
 
-Payment success và Booking expiration có thể chạy đồng thời. SePay IPN lock và
-re-check theo thứ tự `Booking -> Payment -> PaymentAttempt`; chỉ transition từ
-`PENDING` hợp lệ được ghi. IPN đến sau khi Booking/Payment/Attempt đã expired,
-cancelled hoặc failed được acknowledge và log reconciliation, không resurrect
-state terminal.
+Payment success và Booking expiration có thể chạy đồng thời. Cả hai flow lock
+Booking trước. Atomic settlement tiếp tục lock theo thứ tự
+`Booking -> Payment -> PaymentAttempt -> Reservations (ORDER BY id)`, lấy
+database `NOW()`, rồi re-read toàn aggregate trước khi mutate. Expiration dùng
+`FOR UPDATE SKIP LOCKED`, vì vậy chỉ một flow có thể thắng trên cùng Booking.
 
-Trong boundary hiện tại, IPN chỉ chuyển Payment và PaymentAttempt sang
-`SUCCEEDED`. Booking vẫn `PENDING_PAYMENT` và Reservation vẫn `HELD` cho tới
-task `feat/booking-confirmation`. Browser callback không tham gia state machine;
-nó chỉ mở Result UX, sau đó UX đọc trạng thái authoritative từ backend.
+Nếu settlement thắng khi hold còn hạn, Attempt, Payment, Booking và toàn bộ
+Reservations được cập nhật trong một transaction. Nếu expiration thắng,
+Booking/Reservations ở trạng thái `EXPIRED`; payment đến muộn được ghi nhận
+nhưng không resurrect capacity. Browser callback không tham gia state machine;
+UX luôn đọc trạng thái authoritative từ backend.
 
 ---
 
@@ -637,7 +638,7 @@ Generic PATCH không thay đổi status; invalid transition trả `409 Conflict`
 Đây là phần quan trọng nhất.
 
 ```text
-Reservation ACTIVE
+Reservation HELD
         ↓
 
 Booking HELD
@@ -667,6 +668,9 @@ Khi callback thanh toán hợp lệ:
 ```text
 BEGIN TRANSACTION
 
+PaymentAttempt
+PENDING → SUCCEEDED
+
 Payment
 PENDING → SUCCEEDED
 
@@ -674,15 +678,30 @@ Booking
 PENDING_PAYMENT → CONFIRMED
 
 Reservation
-HELD → CONFIRMED
-
-Create Ticket
-ACTIVE
+ALL HELD → CONFIRMED
 
 COMMIT
 ```
 
-Các state phải thay đổi cùng nhau.
+Các state và `confirmedAt` phải thay đổi cùng nhau. Mỗi BookingItem của hold
+hiện tại phải có đúng một Reservation. Settlement kiểm tra expected row count;
+thiếu hoặc mixed Reservation làm toàn transaction rollback/reconciliation.
+Không tạo Ticket hoặc gửi notification trong transaction này.
+
+Late-payment path:
+
+```text
+Payment received
+        ↓
+Booking already EXPIRED/CANCELLED
+        ↓
+NO automatic confirmation or resurrection
+        ↓
+manual reconciliation/refund required
+```
+
+Nếu hold vừa hết hạn nhưng expiration worker chưa finalize, settlement ghi nhận
+Payment và atomically chuyển Booking/HELD Reservations sang `EXPIRED`.
 
 ---
 
@@ -692,10 +711,10 @@ Nếu hold hết hạn:
 
 ```text
 Reservation
-ACTIVE → EXPIRED
+HELD → EXPIRED
 
 Booking
-HELD / PENDING_PAYMENT → EXPIRED
+PENDING_PAYMENT → EXPIRED
 ```
 
 Không tạo Ticket.
@@ -877,13 +896,13 @@ Ticket CHECKED_IN
 ```
 
 ```text
-Reservation CONSUMED
+Reservation CONFIRMED
 → Booking CONFIRMED
 ```
 
 ```text
 Booking EXPIRED
-→ Reservation must not remain ACTIVE
+→ Reservation must not remain HELD
 ```
 
 ---
@@ -982,8 +1001,9 @@ IDEMPOTENCY
 # 29. Booking Schema Foundation Update
 
 Migration `booking_schema` implements the current Booking foundation with a
-smaller state surface than the broader MVP design above. Runtime payment,
-ticket, refund, completion, and hold worker behavior remain future tasks.
+smaller state surface than the broader MVP design above. Atomic payment
+settlement and hold expiration are implemented; ticket, refund, completion,
+notification, and payout behavior remain future tasks.
 
 ## Booking states currently represented in schema
 
@@ -1073,8 +1093,9 @@ Reservation.status = HELD
 ```
 
 The hold endpoint does not implement payment confirmation, release, or
-cancellation transitions. Expiration finalization is implemented by the
-background worker:
+cancellation transitions. Payment confirmation is triggered only by the
+trusted provider flow. Expiration finalization is implemented by the background
+worker:
 
 ```text
 Booking:
@@ -1089,8 +1110,8 @@ HELD
 ```
 
 The worker locks/re-checks Booking first, then mutates related Reservations in
-the same transaction. Future payment confirmation must use the same Booking
-lock-first rule and must only confirm a Booking that is still:
+the same transaction. Payment settlement uses the same Booking lock-first rule
+and only confirms a Booking that is still:
 
 ```text
 PENDING_PAYMENT

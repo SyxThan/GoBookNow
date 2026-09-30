@@ -8,8 +8,10 @@ import {
   PaymentAttemptStatus,
   PaymentProvider,
   PaymentStatus,
+  ReservationStatus,
 } from '../src/generated/prisma/client.js';
 import { PaymentMatchingService } from '../src/payments/payment-matching.service.js';
+import { PaymentSettlementService } from '../src/payments/payment-settlement.service.js';
 import { SepayIpnAuthGuard } from '../src/payments/sepay-ipn-auth.guard.js';
 import { SepayIpnController } from '../src/payments/sepay-ipn.controller.js';
 import { SepayIpnService } from '../src/payments/sepay-ipn.service.js';
@@ -125,17 +127,32 @@ describe('SePay strict payment matching (e2e)', () => {
     merchantReference,
     providerTransactionId: null as string | null,
     expiresAt: new Date('2026-10-01T00:10:00.000Z'),
+    succeededAt: null as Date | null,
     payment: {
       id: `payment-${suffix}`,
+      bookingId: `booking-${suffix}`,
       status: PaymentStatus.PENDING,
       amount: 250_000n,
       currency: 'VND',
+      succeededAt: null as Date | null,
       booking: {
         id: `booking-${suffix}`,
         status: BookingStatus.PENDING_PAYMENT,
         totalAmount: 250_000n,
         currency: 'VND',
         expiresAt: new Date('2026-10-01T00:10:00.000Z'),
+        confirmedAt: null as Date | null,
+        items: [
+          {
+            id: `item-${suffix}`,
+            reservation: {
+              id: `reservation-${suffix}`,
+              status: ReservationStatus.HELD,
+              expiresAt: new Date('2026-10-01T00:10:00.000Z'),
+              confirmedAt: null as Date | null,
+            },
+          },
+        ],
       },
     },
   });
@@ -143,23 +160,39 @@ describe('SePay strict payment matching (e2e)', () => {
   let attemptA = makeAttempt('a', 'GBKA');
   let attemptB = makeAttempt('b', 'GBKB');
   const attempts = () => [attemptA, attemptB];
+  let currentAttempt = attemptA;
   const transaction = {
     $queryRaw: vi.fn(() => {
       rawCall += 1;
-      return Promise.resolve(
-        rawCall % 4 === 0
-          ? [{ now: new Date('2026-10-01T00:00:00.000Z') }]
-          : [{ id: 'locked' }],
-      );
+      const phase = (rawCall - 1) % 5;
+      if (phase === 0) {
+        return Promise.resolve([{ id: currentAttempt.payment.booking.id }]);
+      }
+      if (phase === 1) {
+        return Promise.resolve([{ id: currentAttempt.payment.id }]);
+      }
+      if (phase === 2) return Promise.resolve([{ id: currentAttempt.id }]);
+      if (phase === 3) {
+        return Promise.resolve(
+          currentAttempt.payment.booking.items.map(({ reservation }) => ({
+            id: reservation.id,
+          })),
+        );
+      }
+      return Promise.resolve([{ now: new Date('2026-10-01T00:00:00.000Z') }]);
     }),
     paymentAttempt: {
-      findUnique: vi.fn(({ where }: { where: { merchantReference: string } }) =>
-        Promise.resolve(
-          attempts().find(
-            ({ merchantReference }) =>
-              merchantReference === where.merchantReference,
-          ) ?? null,
-        ),
+      findUnique: vi.fn(
+        ({ where }: { where: { id?: string; merchantReference?: string } }) => {
+          const found = attempts().find(
+            (attempt) =>
+              (where.id !== undefined && attempt.id === where.id) ||
+              (where.merchantReference !== undefined &&
+                attempt.merchantReference === where.merchantReference),
+          );
+          if (found) currentAttempt = found;
+          return Promise.resolve(found ?? null);
+        },
       ),
       findFirst: vi.fn(
         ({
@@ -187,8 +220,24 @@ describe('SePay strict payment matching (e2e)', () => {
           return Promise.resolve(attempt);
         },
       ),
+      updateMany: vi.fn(
+        ({ where, data }: { where: { id: string }; data: object }) => {
+          const attempt = attempts().find(({ id }) => id === where.id);
+          if (!attempt || attempt.status !== PaymentAttemptStatus.PENDING) {
+            return Promise.resolve({ count: 0 });
+          }
+          Object.assign(attempt, data);
+          return Promise.resolve({ count: 1 });
+        },
+      ),
     },
     payment: {
+      findUnique: vi.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          attempts().find(({ payment }) => payment.id === where.id)?.payment ??
+            null,
+        ),
+      ),
       update: vi.fn(
         ({ where, data }: { where: { id: string }; data: object }) => {
           const payment = attempts().find(
@@ -198,6 +247,39 @@ describe('SePay strict payment matching (e2e)', () => {
           return Promise.resolve(payment);
         },
       ),
+      updateMany: vi.fn(
+        ({ where, data }: { where: { id: string }; data: object }) => {
+          const payment = attempts().find(
+            (attempt) => attempt.payment.id === where.id,
+          )?.payment;
+          if (!payment || payment.status !== PaymentStatus.PENDING) {
+            return Promise.resolve({ count: 0 });
+          }
+          Object.assign(payment, data);
+          return Promise.resolve({ count: 1 });
+        },
+      ),
+    },
+    booking: {
+      updateMany: vi.fn(({ data }: { data: object }) => {
+        if (
+          currentAttempt.payment.booking.status !==
+          BookingStatus.PENDING_PAYMENT
+        ) {
+          return Promise.resolve({ count: 0 });
+        }
+        Object.assign(currentAttempt.payment.booking, data);
+        return Promise.resolve({ count: 1 });
+      }),
+    },
+    reservation: {
+      updateMany: vi.fn(({ data }: { data: object }) => {
+        const held = currentAttempt.payment.booking.items
+          .map(({ reservation }) => reservation)
+          .filter(({ status }) => status === ReservationStatus.HELD);
+        held.forEach((reservation) => Object.assign(reservation, data));
+        return Promise.resolve({ count: held.length });
+      }),
     },
   };
   const prisma = {
@@ -205,6 +287,7 @@ describe('SePay strict payment matching (e2e)', () => {
       (callback: (client: typeof transaction) => Promise<void>) =>
         callback(transaction),
     ),
+    paymentAttempt: transaction.paymentAttempt,
   };
 
   beforeAll(async () => {
@@ -220,6 +303,7 @@ describe('SePay strict payment matching (e2e)', () => {
       providers: [
         SepayIpnAuthGuard,
         PaymentMatchingService,
+        PaymentSettlementService,
         SepayIpnService,
         { provide: PrismaService, useValue: prisma },
       ],
@@ -242,6 +326,7 @@ describe('SePay strict payment matching (e2e)', () => {
     rawCall = 0;
     attemptA = makeAttempt('a', 'GBKA');
     attemptB = makeAttempt('b', 'GBKB');
+    currentAttempt = attemptA;
   });
 
   afterAll(async () => app.close());
@@ -273,15 +358,24 @@ describe('SePay strict payment matching (e2e)', () => {
   it('matches exact reference A only, despite equal amounts and manipulated custom data', async () => {
     await sendMatchingPayload().expect(200, { success: true });
 
-    expect(transaction.paymentAttempt.update).toHaveBeenCalledOnce();
-    expect(transaction.paymentAttempt.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'attempt-a' } }),
+    expect(transaction.paymentAttempt.updateMany).toHaveBeenCalledOnce();
+    expect(transaction.paymentAttempt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'attempt-a' }),
+      }),
     );
-    expect(transaction.payment.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'payment-a' } }),
+    expect(transaction.payment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'payment-a' }),
+      }),
+    );
+    expect(attemptA.payment.booking.status).toBe(BookingStatus.CONFIRMED);
+    expect(attemptA.payment.booking.items[0]?.reservation.status).toBe(
+      ReservationStatus.CONFIRMED,
     );
     expect(attemptB.status).toBe(PaymentAttemptStatus.PENDING);
     expect(attemptB.payment.status).toBe(PaymentStatus.PENDING);
+    expect(attemptB.payment.booking.status).toBe(BookingStatus.PENDING_PAYMENT);
   });
 
   it('does not mark any Payment successful for an unknown reference', async () => {
@@ -289,8 +383,9 @@ describe('SePay strict payment matching (e2e)', () => {
       success: true,
     });
 
-    expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
-    expect(transaction.payment.update).not.toHaveBeenCalled();
+    expect(transaction.paymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(transaction.payment.updateMany).not.toHaveBeenCalled();
+    expect(transaction.booking.updateMany).not.toHaveBeenCalled();
   });
 
   it('does not mark any Payment successful for a wrong amount', async () => {
@@ -298,17 +393,27 @@ describe('SePay strict payment matching (e2e)', () => {
       success: true,
     });
 
-    expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
-    expect(transaction.payment.update).not.toHaveBeenCalled();
+    expect(transaction.paymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(transaction.payment.updateMany).not.toHaveBeenCalled();
+    expect(transaction.booking.updateMany).not.toHaveBeenCalled();
   });
 
   it('handles duplicate delivery idempotently without a second update', async () => {
     await sendMatchingPayload().expect(200, { success: true });
+    const bookingConfirmedAt = attemptA.payment.booking.confirmedAt;
+    const reservationConfirmedAt =
+      attemptA.payment.booking.items[0]?.reservation.confirmedAt;
     await sendMatchingPayload().expect(200, { success: true });
 
-    expect(transaction.paymentAttempt.update).toHaveBeenCalledOnce();
-    expect(transaction.payment.update).toHaveBeenCalledOnce();
+    expect(transaction.paymentAttempt.updateMany).toHaveBeenCalledOnce();
+    expect(transaction.payment.updateMany).toHaveBeenCalledOnce();
+    expect(transaction.booking.updateMany).toHaveBeenCalledOnce();
+    expect(transaction.reservation.updateMany).toHaveBeenCalledOnce();
     expect(attemptA.providerTransactionId).toBe('TX1');
+    expect(attemptA.payment.booking.confirmedAt).toEqual(bookingConfirmedAt);
+    expect(attemptA.payment.booking.items[0]?.reservation.confirmedAt).toEqual(
+      reservationConfirmedAt,
+    );
     expect(attemptB.providerTransactionId).toBeNull();
   });
 });

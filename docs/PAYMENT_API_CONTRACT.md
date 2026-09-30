@@ -250,7 +250,7 @@ Unknown references, amount/currency mismatches, late payments, invalid states,
 and transaction collisions are acknowledged and logged with sanitized local
 identifiers as candidates for future manual reconciliation. They are never
 auto-attached. The matching service is read-only; state mutation remains in the
-transactional IPN processor.
+provider-agnostic transactional settlement service.
 
 GoBook requires `order_status=CAPTURED`, `transaction_type=PAYMENT`, and
 `transaction_status=APPROVED`. Both provider amount fields must exactly match
@@ -259,15 +259,21 @@ both the Attempt and Payment snapshots. VND strings such as `250000` and
 scientific notation, and malformed values are rejected. Both provider currency
 fields and both local snapshots must be `VND`.
 
-Processing locks and re-checks Booking, Payment, then PaymentAttempt inside one
-database transaction. A valid transition writes:
+After strict matching, provider-agnostic atomic settlement locks and re-checks
+`Booking -> Payment -> PaymentAttempt -> Reservations (ORDER BY id)`. A valid
+transition writes in one database transaction:
 
 ```text
 PaymentAttempt PENDING -> SUCCEEDED
 Payment PENDING        -> SUCCEEDED
-Booking                -> UNCHANGED
-Reservation            -> UNCHANGED
+Booking PENDING_PAYMENT -> CONFIRMED
+ALL Reservations HELD  -> CONFIRMED
 ```
+
+`Booking.confirmedAt`, every `Reservation.confirmedAt`, and new financial
+success timestamps use the same database `NOW()`. Settlement validates one
+Reservation per BookingItem and exact update counts; any partial write failure
+rolls back the whole transaction. It never updates `Slot.capacity`.
 
 The same provider transaction on the same successful Attempt is an idempotent
 no-op. A different transaction already stored on the Attempt, or the same
@@ -333,12 +339,13 @@ while the backend Payment is `PENDING`.
 
 The result page polls roughly every 2.5 seconds while Payment is pending. A
 successful browser hint with pending backend state renders "Đang xác nhận thanh
-toán...". `Payment SUCCEEDED` with `Booking PENDING_PAYMENT` renders that the
-payment was received and booking confirmation is still in progress.
+toán...". `Payment SUCCEEDED` with `Booking PENDING_PAYMENT` is now a
+reconciliation state rather than the normal happy path and renders that the
+payment was received while booking confirmation requires attention.
 `Payment SUCCEEDED` with `Booking CONFIRMED` renders final success. Cancel/error
 callbacks still display a successful payment if that is the backend state.
 
-## Current Success Boundary
+## Atomic Success Boundary
 
 ```text
 Booking PENDING_PAYMENT + Reservation HELD
@@ -348,14 +355,13 @@ Booking PENDING_PAYMENT + Reservation HELD
   -> authenticated and validated SePay Gateway IPN
   -> PaymentAttempt SUCCEEDED
   -> Payment SUCCEEDED
-  -> future feat/booking-confirmation
   -> Booking CONFIRMED
-  -> Reservation CONFIRMED
+  -> all Reservations CONFIRMED
 ```
 
-Until `feat/booking-confirmation`, `Payment SUCCEEDED` with Booking still
-`PENDING_PAYMENT` is an explicit temporary consistency window. This IPN handler
-must not hide Booking or Reservation confirmation logic.
+All four transitions occur in one transaction for an eligible on-time payment.
+Duplicate delivery re-reads the locked aggregate and returns an idempotent
+no-op without rewriting confirmation timestamps.
 
 ## IPN Deployment and Sandbox Configuration
 
@@ -406,9 +412,10 @@ Payment PENDING -> EXPIRED
 all related PENDING attempts -> EXPIRED
 ```
 
-The Booking expiration worker locks the Booking and skips expiration when its
-Payment is already `SUCCEEDED`. This closes the payment-first side of the IPN
-versus expiry race without confirming Booking or Reservation.
+The Booking expiration worker locks the Booking first and skips expiration when
+its Payment is already `SUCCEEDED`. Atomic settlement uses the same Booking-first
+lock order, so the payment-first outcome is already fully confirmed rather than
+leaving an intermediate normal state.
 
 ## Concurrency and Consistency
 
@@ -420,7 +427,9 @@ are logged for manual reconciliation.
 Consistency rules include:
 
 - `Booking CONFIRMED` implies `Payment SUCCEEDED`.
-- `Booking EXPIRED` prevents a later Payment success transition.
+- `Booking EXPIRED` prevents later automatic Booking/Reservation confirmation;
+  an authoritative late provider payment may still be recorded as `SUCCEEDED`
+  and logged for manual reconciliation/refund.
 - cancellation before payment moves a pending Payment to `CANCELLED`.
 
 There is no generic Payment status PATCH and no Payment delete endpoint.

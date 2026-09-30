@@ -7,6 +7,7 @@ import {
 } from '../generated/prisma/client.js';
 import type { SepayIpnDto } from './dto/sepay-ipn.dto.js';
 import { PaymentMatchingService } from './payment-matching.service.js';
+import type { PaymentSettlementService } from './payment-settlement.service.js';
 import { SepayIpnService } from './sepay-ipn.service.js';
 
 const NOW = new Date('2026-09-29T08:00:00.000Z');
@@ -88,14 +89,7 @@ function setup(
       },
     },
   };
-  let rawCall = 0;
   const transaction = {
-    $queryRaw: vi.fn(() => {
-      rawCall += 1;
-      return Promise.resolve(
-        rawCall % 4 === 0 ? [{ now: NOW }] : [{ id: 'locked' }],
-      );
-    }),
     paymentAttempt: {
       findUnique: vi
         .fn()
@@ -123,55 +117,61 @@ function setup(
       }),
     },
   };
-  const runTransaction = vi.fn((callback) => callback(transaction));
   const prisma = {
-    $transaction: runTransaction,
+    paymentAttempt: transaction.paymentAttempt,
   } as unknown as PrismaService;
+  const settle = vi.fn().mockResolvedValue({
+    outcome: 'CONFIRMED',
+    attemptId: attempt.id,
+    paymentId: attempt.payment.id,
+    bookingId: attempt.payment.booking.id,
+    reservationCount: 1,
+    confirmedAt: NOW,
+  });
+  const settlement = { settle } as unknown as PaymentSettlementService;
 
   return {
-    service: new SepayIpnService(prisma, new PaymentMatchingService(prisma)),
-    runTransaction,
+    service: new SepayIpnService(
+      new PaymentMatchingService(prisma),
+      settlement,
+    ),
     transaction,
     attempt,
+    settle,
   };
 }
 
 describe('SepayIpnService', () => {
-  it('atomically marks only PaymentAttempt and Payment successful', async () => {
-    const { service, transaction, attempt } = setup();
+  it('delegates a strict match to atomic payment settlement', async () => {
+    const { service, settle, attempt } = setup();
 
     await expect(service.process(payload())).resolves.toEqual({
       success: true,
     });
 
-    expect(transaction.paymentAttempt.update).toHaveBeenCalledWith({
-      where: { id: attempt.id },
-      data: {
-        status: PaymentAttemptStatus.SUCCEEDED,
-        providerTransactionId: 'SEPAY-TXN-001',
-        succeededAt: NOW,
-      },
+    expect(settle).toHaveBeenCalledWith({
+      attemptId: attempt.id,
+      paymentId: attempt.payment.id,
+      bookingId: attempt.payment.booking.id,
+      provider: PaymentProvider.SEPAY,
+      providerTransactionId: 'SEPAY-TXN-001',
+      amount: 250_000n,
+      currency: 'VND',
     });
-    expect(transaction.payment.update).toHaveBeenCalledWith({
-      where: { id: attempt.payment.id },
-      data: { status: PaymentStatus.SUCCEEDED, succeededAt: NOW },
-    });
-    expect(transaction).not.toHaveProperty('booking.update');
-    expect(transaction).not.toHaveProperty('reservation.update');
   });
 
-  it('acknowledges duplicate delivery without a second state change', async () => {
-    const { service, transaction } = setup();
+  it('delegates duplicate delivery to the idempotent settlement service', async () => {
+    const { service, settle } = setup();
 
     await service.process(payload());
     await service.process(payload());
 
-    expect(transaction.paymentAttempt.update).toHaveBeenCalledTimes(1);
-    expect(transaction.payment.update).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledTimes(2);
+    expect(settle.mock.calls[0]?.[0]).toEqual(settle.mock.calls[1]?.[0]);
   });
 
   it('does not create records for an unknown merchant reference', async () => {
-    const { service, transaction } = setup({ unknownReference: true });
+    const { service, transaction, settle } = setup({ unknownReference: true });
 
     await expect(service.process(payload())).resolves.toEqual({
       success: true,
@@ -180,6 +180,7 @@ describe('SepayIpnService', () => {
     expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
     expect(transaction.payment.update).not.toHaveBeenCalled();
     expect(transaction.paymentAttempt).not.toHaveProperty('create');
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -193,31 +194,34 @@ describe('SepayIpnService', () => {
     ['transaction type mismatch', { transactionType: 'REFUND' }],
     ['transaction status mismatch', { transactionStatus: 'DECLINED' }],
   ])('acknowledges but does not confirm %s', async (_name, change) => {
-    const { service, transaction } = setup();
+    const { service, transaction, settle } = setup();
 
     await service.process(payload(change));
 
     expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
     expect(transaction.payment.update).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it('does not process an attempt owned by another provider', async () => {
-    const { service, transaction } = setup({
+    const { service, transaction, settle } = setup({
       provider: 'OTHER' as PaymentProvider,
     });
 
     await service.process(payload());
 
     expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it('protects a provider transaction ID used by another attempt', async () => {
-    const { service, transaction } = setup({ collision: true });
+    const { service, transaction, settle } = setup({ collision: true });
 
     await service.process(payload());
 
     expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
     expect(transaction.payment.update).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -229,7 +233,7 @@ describe('SepayIpnService', () => {
   ])(
     'does not resurrect Attempt %s / Payment %s',
     async (attemptStatus, paymentStatus) => {
-      const { service, transaction } = setup({
+      const { service, transaction, settle } = setup({
         attemptStatus,
         paymentStatus,
       });
@@ -238,30 +242,33 @@ describe('SepayIpnService', () => {
 
       expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
       expect(transaction.payment.update).not.toHaveBeenCalled();
+      expect(settle).not.toHaveBeenCalled();
     },
   );
 
   it.each([BookingStatus.EXPIRED, BookingStatus.CANCELLED])(
     'does not apply payment success to a %s Booking aggregate',
     async (bookingStatus) => {
-      const { service, transaction } = setup({ bookingStatus });
+      const { service, transaction, settle } = setup({ bookingStatus });
 
       await service.process(payload());
 
       expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
+      expect(settle).toHaveBeenCalledOnce();
     },
   );
 
   it('does not accept an IPN after the payment hold expiry time', async () => {
-    const { service, transaction } = setup({ expiresAt: NOW });
+    const { service, transaction, settle } = setup({ expiresAt: NOW });
 
     await service.process(payload());
 
     expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
+    expect(settle).toHaveBeenCalledOnce();
   });
 
   it('acknowledges TRANSACTION_VOID without reversing state', async () => {
-    const { service, runTransaction, transaction } = setup({
+    const { service, settle, transaction } = setup({
       attemptStatus: PaymentAttemptStatus.SUCCEEDED,
       paymentStatus: PaymentStatus.SUCCEEDED,
       providerTransactionId: 'SEPAY-TXN-001',
@@ -271,7 +278,7 @@ describe('SepayIpnService', () => {
       service.process(payload({ notificationType: 'TRANSACTION_VOID' })),
     ).resolves.toEqual({ success: true });
 
-    expect(runTransaction).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
     expect(transaction.paymentAttempt.update).not.toHaveBeenCalled();
     expect(transaction.payment.update).not.toHaveBeenCalled();
   });
