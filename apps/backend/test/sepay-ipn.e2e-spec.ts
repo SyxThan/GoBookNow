@@ -111,6 +111,46 @@ describe('SePay Payment Gateway IPN authentication (e2e)', () => {
     }).expect(400);
     expect(processIpn).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      'missing merchant reference',
+      {
+        ...validPayload(),
+        order: { ...validPayload().order, order_invoice_number: undefined },
+      },
+    ],
+    [
+      'missing amount',
+      {
+        ...validPayload(),
+        transaction: {
+          ...validPayload().transaction,
+          transaction_amount: undefined,
+        },
+      },
+    ],
+    [
+      'missing transaction ID',
+      {
+        ...validPayload(),
+        transaction: {
+          ...validPayload().transaction,
+          transaction_id: undefined,
+        },
+      },
+    ],
+    ['empty notification type', { ...validPayload(), notification_type: '' }],
+    ['invalid nested order', { ...validPayload(), order: 'invalid' }],
+    ['missing nested order', { ...validPayload(), order: undefined }],
+    [
+      'missing nested transaction',
+      { ...validPayload(), transaction: undefined },
+    ],
+  ])('rejects %s without invoking payment processing', async (_name, body) => {
+    await send(IPN_SECRET, body).expect(400);
+    expect(processIpn).not.toHaveBeenCalled();
+  });
 });
 
 describe('SePay strict payment matching (e2e)', () => {
@@ -336,13 +376,18 @@ describe('SePay strict payment matching (e2e)', () => {
       merchantReference: string;
       amount: string;
       transactionId: string;
+      currency: string;
+      notificationType: string;
     }> = {},
   ) => {
     const body = validPayload();
+    body.notification_type = overrides.notificationType ?? 'ORDER_PAID';
     body.order.order_invoice_number = overrides.merchantReference ?? 'GBKA';
     body.order.order_amount = overrides.amount ?? '250000.00';
+    body.order.order_currency = overrides.currency ?? 'VND';
     body.transaction.transaction_amount = overrides.amount ?? '250000';
     body.transaction.transaction_id = overrides.transactionId ?? 'TX1';
+    body.transaction.transaction_currency = overrides.currency ?? 'VND';
     body.order.custom_data = {
       bookingId: 'booking-b',
       paymentId: 'payment-b',
@@ -396,6 +441,52 @@ describe('SePay strict payment matching (e2e)', () => {
     expect(transaction.paymentAttempt.updateMany).not.toHaveBeenCalled();
     expect(transaction.payment.updateMany).not.toHaveBeenCalled();
     expect(transaction.booking.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not mark a Payment successful for the wrong currency', async () => {
+    await sendMatchingPayload({ currency: 'USD' }).expect(200, {
+      success: true,
+    });
+    expect(transaction.paymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(transaction.payment.updateMany).not.toHaveBeenCalled();
+    expect(attemptA.payment.booking.status).toBe(BookingStatus.PENDING_PAYMENT);
+  });
+
+  it('rejects a replacement provider transaction ID for the same reference', async () => {
+    await sendMatchingPayload().expect(200, { success: true });
+    await sendMatchingPayload({ transactionId: 'TX999' }).expect(200, {
+      success: true,
+    });
+
+    expect(attemptA.providerTransactionId).toBe('TX1');
+    expect(transaction.paymentAttempt.updateMany).toHaveBeenCalledOnce();
+    expect(attemptA.payment.booking.status).toBe(BookingStatus.CONFIRMED);
+  });
+
+  it('does not confirm another Booking when its provider transaction ID collides', async () => {
+    await sendMatchingPayload().expect(200, { success: true });
+    await sendMatchingPayload({
+      merchantReference: 'GBKB',
+      transactionId: 'TX1',
+    }).expect(200, { success: true });
+
+    expect(attemptB.providerTransactionId).toBeNull();
+    expect(attemptB.payment.status).toBe(PaymentStatus.PENDING);
+    expect(attemptB.payment.booking.status).toBe(BookingStatus.PENDING_PAYMENT);
+    expect(transaction.paymentAttempt.updateMany).toHaveBeenCalledOnce();
+  });
+
+  it('acknowledges an unsupported void event without reversing a confirmed Booking', async () => {
+    await sendMatchingPayload().expect(200, { success: true });
+    const confirmedAt = attemptA.payment.booking.confirmedAt;
+    await sendMatchingPayload({ notificationType: 'TRANSACTION_VOID' }).expect(
+      200,
+      { success: true },
+    );
+
+    expect(attemptA.payment.booking.status).toBe(BookingStatus.CONFIRMED);
+    expect(attemptA.payment.booking.confirmedAt).toEqual(confirmedAt);
+    expect(transaction.booking.updateMany).toHaveBeenCalledOnce();
   });
 
   it('handles duplicate delivery idempotently without a second update', async () => {

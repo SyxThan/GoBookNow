@@ -25,6 +25,7 @@ import {
   type PaymentSettlementInput,
   PaymentSettlementService,
 } from '../src/payments/payment-settlement.service.js';
+import { assertIsolatedPaymentTestDatabase } from './payment-test-database.js';
 
 const IPN_SECRET = 'booking-confirmation-e2e-secret';
 type DbNowRow = { now: Date };
@@ -46,6 +47,7 @@ describe('Atomic payment settlement (e2e, PostgreSQL)', () => {
   let sequence = 0;
 
   beforeAll(async () => {
+    assertIsolatedPaymentTestDatabase();
     const fixture = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -415,26 +417,215 @@ describe('Atomic payment settlement (e2e, PostgreSQL)', () => {
     ).toBe(true);
   });
 
-  it('keeps an expiration-versus-confirmation race internally consistent', async () => {
-    const expired = await createAggregate({
-      itemCount: 2,
-      expiresAt: new Date('1900-01-01T00:00:00.000Z'),
+  it('converges three concurrent authenticated duplicate IPNs to one confirmation', async () => {
+    const future = new Date((await databaseNow()).getTime() + 10 * 60_000);
+    const fixture = await createAggregate({ itemCount: 2, expiresAt: future });
+    const body = ipnPayload({
+      merchantReference: fixture.merchantReference,
+      providerTransactionId: fixture.settlementInput.providerTransactionId,
+      amount: fixture.settlementInput.amount,
     });
 
-    await Promise.all([
-      settlement.settle(expired.settlementInput),
-      expiration.sweepExpiredBookings({ batchSize: 1 }),
+    const responses = await Promise.all([
+      request(app.getHttpServer())
+        .post('/api/v1/webhooks/sepay/ipn')
+        .set('X-Secret-Key', IPN_SECRET)
+        .send(body),
+      request(app.getHttpServer())
+        .post('/api/v1/webhooks/sepay/ipn')
+        .set('X-Secret-Key', IPN_SECRET)
+        .send(body),
+      request(app.getHttpServer())
+        .post('/api/v1/webhooks/sepay/ipn')
+        .set('X-Secret-Key', IPN_SECRET)
+        .send(body),
     ]);
+    expect(responses.map(({ status }) => status)).toEqual([200, 200, 200]);
 
-    const expiredAggregate = await loadAggregate(
-      expired.settlementInput.bookingId,
+    const aggregate = await loadAggregate(fixture.settlementInput.bookingId);
+    expect(aggregate.payment?.attempts).toHaveLength(1);
+    expect(aggregate.payment?.attempts[0]?.status).toBe(
+      PaymentAttemptStatus.SUCCEEDED,
     );
-    expect(expiredAggregate.payment?.status).toBe(PaymentStatus.SUCCEEDED);
-    expect(expiredAggregate.status).toBe(BookingStatus.EXPIRED);
+    expect(aggregate.payment?.status).toBe(PaymentStatus.SUCCEEDED);
+    expect(aggregate.status).toBe(BookingStatus.CONFIRMED);
     expect(
-      expiredAggregate.items.every(
-        ({ reservation }) => reservation?.status === ReservationStatus.EXPIRED,
+      aggregate.items.every(
+        ({ reservation }) =>
+          reservation?.status === ReservationStatus.CONFIRMED,
       ),
     ).toBe(true);
+    const confirmedAt = aggregate.confirmedAt;
+    await request(app.getHttpServer())
+      .post('/api/v1/webhooks/sepay/ipn')
+      .set('X-Secret-Key', IPN_SECRET)
+      .send(body)
+      .expect(200);
+    expect(
+      (await loadAggregate(fixture.settlementInput.bookingId)).confirmedAt,
+    ).toEqual(confirmedAt);
+  });
+
+  it('does not confirm another Booking with the same provider transaction ID', async () => {
+    const future = new Date((await databaseNow()).getTime() + 10 * 60_000);
+    const first = await createAggregate({ itemCount: 1, expiresAt: future });
+    const second = await createAggregate({ itemCount: 1, expiresAt: future });
+    const transactionId = first.settlementInput.providerTransactionId;
+    for (const fixture of [first, second]) {
+      await request(app.getHttpServer())
+        .post('/api/v1/webhooks/sepay/ipn')
+        .set('X-Secret-Key', IPN_SECRET)
+        .send(
+          ipnPayload({
+            merchantReference: fixture.merchantReference,
+            providerTransactionId: transactionId,
+            amount: fixture.settlementInput.amount,
+          }),
+        )
+        .expect(200, { success: true });
+    }
+
+    const firstAggregate = await loadAggregate(first.settlementInput.bookingId);
+    const secondAggregate = await loadAggregate(
+      second.settlementInput.bookingId,
+    );
+    expect(firstAggregate.status).toBe(BookingStatus.CONFIRMED);
+    expect(secondAggregate.status).toBe(BookingStatus.PENDING_PAYMENT);
+    expect(secondAggregate.payment?.status).toBe(PaymentStatus.PENDING);
+    expect(
+      secondAggregate.payment?.attempts[0]?.providerTransactionId,
+    ).toBeNull();
+  });
+
+  it.each([
+    [BookingStatus.EXPIRED, ReservationStatus.EXPIRED],
+    [BookingStatus.CANCELLED, ReservationStatus.RELEASED],
+  ])(
+    'records a late payment without resurrecting a %s Booking',
+    async (bookingStatus, reservationStatus) => {
+      const future = new Date((await databaseNow()).getTime() + 10 * 60_000);
+      const fixture = await createAggregate({
+        itemCount: 2,
+        expiresAt: future,
+      });
+      await prisma.booking.update({
+        where: { id: fixture.settlementInput.bookingId },
+        data: { status: bookingStatus },
+      });
+      await prisma.reservation.updateMany({
+        where: {
+          bookingItem: { bookingId: fixture.settlementInput.bookingId },
+        },
+        data: { status: reservationStatus },
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/webhooks/sepay/ipn')
+        .set('X-Secret-Key', IPN_SECRET)
+        .send(
+          ipnPayload({
+            merchantReference: fixture.merchantReference,
+            providerTransactionId:
+              fixture.settlementInput.providerTransactionId,
+            amount: fixture.settlementInput.amount,
+          }),
+        )
+        .expect(200, { success: true });
+
+      const aggregate = await loadAggregate(fixture.settlementInput.bookingId);
+      expect(aggregate.status).toBe(bookingStatus);
+      expect(
+        aggregate.items.every(
+          ({ reservation }) => reservation?.status === reservationStatus,
+        ),
+      ).toBe(true);
+      expect(aggregate.payment?.status).toBe(PaymentStatus.SUCCEEDED);
+      expect(aggregate.payment?.attempts[0]?.status).toBe(
+        PaymentAttemptStatus.SUCCEEDED,
+      );
+    },
+  );
+
+  it.each([ReservationStatus.EXPIRED, ReservationStatus.RELEASED])(
+    'does not partially confirm a Booking with a %s Reservation',
+    async (reservationStatus) => {
+      const future = new Date((await databaseNow()).getTime() + 10 * 60_000);
+      const fixture = await createAggregate({
+        itemCount: 2,
+        expiresAt: future,
+      });
+      const reservations = await prisma.reservation.findMany({
+        where: {
+          bookingItem: { bookingId: fixture.settlementInput.bookingId },
+        },
+        orderBy: { id: 'asc' },
+      });
+      await prisma.reservation.update({
+        where: { id: reservations[0]!.id },
+        data: { status: reservationStatus },
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/webhooks/sepay/ipn')
+        .set('X-Secret-Key', IPN_SECRET)
+        .send(
+          ipnPayload({
+            merchantReference: fixture.merchantReference,
+            providerTransactionId:
+              fixture.settlementInput.providerTransactionId,
+            amount: fixture.settlementInput.amount,
+          }),
+        )
+        .expect(200, { success: true });
+
+      const aggregate = await loadAggregate(fixture.settlementInput.bookingId);
+      expect(aggregate.status).toBe(BookingStatus.PENDING_PAYMENT);
+      expect(
+        aggregate.items
+          .map(({ reservation }) => reservation?.status)
+          .sort((left, right) => (left ?? '').localeCompare(right ?? '')),
+      ).toEqual(
+        [ReservationStatus.HELD, reservationStatus].sort((left, right) =>
+          left.localeCompare(right),
+        ),
+      );
+      expect(aggregate.payment?.status).toBe(PaymentStatus.SUCCEEDED);
+      expect(aggregate.payment?.attempts[0]?.status).toBe(
+        PaymentAttemptStatus.SUCCEEDED,
+      );
+    },
+  );
+
+  it('keeps repeated expiration-versus-confirmation races internally consistent', async () => {
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      for (const expired of [true, false]) {
+        const expiresAt = expired
+          ? new Date('1900-01-01T00:00:00.000Z')
+          : new Date((await databaseNow()).getTime() + 10 * 60_000);
+        const fixture = await createAggregate({ itemCount: 2, expiresAt });
+        await Promise.all([
+          settlement.settle(fixture.settlementInput),
+          expiration.sweepExpiredBookings({ batchSize: 1 }),
+        ]);
+
+        const aggregate = await loadAggregate(
+          fixture.settlementInput.bookingId,
+        );
+        const expectedStatus = expired
+          ? BookingStatus.EXPIRED
+          : BookingStatus.CONFIRMED;
+        const expectedReservation =
+          expectedStatus === BookingStatus.EXPIRED
+            ? ReservationStatus.EXPIRED
+            : ReservationStatus.CONFIRMED;
+        expect(aggregate.payment?.status).toBe(PaymentStatus.SUCCEEDED);
+        expect(aggregate.status).toBe(expectedStatus);
+        expect(
+          aggregate.items.every(
+            ({ reservation }) => reservation?.status === expectedReservation,
+          ),
+        ).toBe(true);
+      }
+    }
   });
 });

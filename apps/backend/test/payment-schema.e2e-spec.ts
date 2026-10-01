@@ -19,6 +19,7 @@ import {
 } from '../src/generated/prisma/client.js';
 import { PaymentsService } from '../src/payments/payments.service.js';
 import type { PaymentCheckoutProvider } from '../src/payments/providers/payment-checkout-provider.js';
+import { assertIsolatedPaymentTestDatabase } from './payment-test-database.js';
 
 describe('Payment schema foundation (e2e, PostgreSQL)', () => {
   let app: INestApplication;
@@ -39,6 +40,7 @@ describe('Payment schema foundation (e2e, PostgreSQL)', () => {
   let slotId: string;
 
   beforeAll(async () => {
+    assertIsolatedPaymentTestDatabase();
     const fixture = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule],
     }).compile();
@@ -230,6 +232,145 @@ describe('Payment schema foundation (e2e, PostgreSQL)', () => {
         },
       }),
     ).resolves.toBe(1);
+  });
+
+  it('reuses the same active pending attempt on repeated initiation', async () => {
+    const booking = await createBooking('SERIAL-INIT', 300_000n, true, true);
+    const first = await payments.initiateSepay(customerId, booking.id);
+    paymentIds.push(first.paymentId);
+    const second = await payments.initiateSepay(customerId, booking.id);
+
+    expect(second.paymentId).toBe(first.paymentId);
+    expect(second.attemptId).toBe(first.attemptId);
+    expect(second.merchantReference).toBe(first.merchantReference);
+    await expect(
+      prisma.payment.count({ where: { bookingId: booking.id } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.paymentAttempt.count({ where: { paymentId: first.paymentId } }),
+    ).resolves.toBe(1);
+  });
+
+  it.each([PaymentAttemptStatus.FAILED, PaymentAttemptStatus.EXPIRED])(
+    'preserves a %s attempt and creates one pending retry',
+    async (previousStatus) => {
+      const booking = await createBooking(
+        `RETRY-${previousStatus}`,
+        300_000n,
+        true,
+        true,
+      );
+      const first = await payments.initiateSepay(customerId, booking.id);
+      paymentIds.push(first.paymentId);
+      await prisma.paymentAttempt.update({
+        where: { id: first.attemptId },
+        data: {
+          status: previousStatus,
+          failedAt:
+            previousStatus === PaymentAttemptStatus.FAILED ? new Date() : null,
+        },
+      });
+
+      const retry = await payments.initiateSepay(customerId, booking.id);
+      expect(retry.paymentId).toBe(first.paymentId);
+      expect(retry.attemptId).not.toBe(first.attemptId);
+      expect(retry.merchantReference).not.toBe(first.merchantReference);
+      const payment = await prisma.payment.findUniqueOrThrow({
+        where: { id: first.paymentId },
+        include: { attempts: true },
+      });
+      expect(payment.status).toBe(PaymentStatus.PENDING);
+      expect(payment.attempts).toHaveLength(2);
+      expect(
+        payment.attempts.find(({ id }) => id === first.attemptId)?.status,
+      ).toBe(previousStatus);
+      expect(
+        payment.attempts.find(({ id }) => id === retry.attemptId)?.status,
+      ).toBe(PaymentAttemptStatus.PENDING);
+    },
+  );
+
+  it('creates a fresh attempt when a pending attempt has elapsed', async () => {
+    const booking = await createBooking(
+      'ELAPSED-ATTEMPT',
+      300_000n,
+      true,
+      true,
+    );
+    const first = await payments.initiateSepay(customerId, booking.id);
+    paymentIds.push(first.paymentId);
+    await prisma.paymentAttempt.update({
+      where: { id: first.attemptId },
+      data: { expiresAt: new Date('1900-01-01T00:00:00.000Z') },
+    });
+
+    const retry = await payments.initiateSepay(customerId, booking.id);
+    expect(retry.attemptId).not.toBe(first.attemptId);
+    await expect(
+      prisma.paymentAttempt.count({ where: { paymentId: first.paymentId } }),
+    ).resolves.toBe(2);
+    await expect(
+      prisma.paymentAttempt.count({
+        where: {
+          paymentId: first.paymentId,
+          status: PaymentAttemptStatus.PENDING,
+          expiresAt: { gt: new Date() },
+        },
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it('rejects an elapsed Booking before creating a Payment or checkout', async () => {
+    const booking = await createBooking(
+      'ELAPSED-BOOKING',
+      300_000n,
+      true,
+      true,
+    );
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { expiresAt: new Date('1900-01-01T00:00:00.000Z') },
+    });
+
+    await expect(
+      payments.initiateSepay(customerId, booking.id),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      prisma.payment.count({ where: { bookingId: booking.id } }),
+    ).resolves.toBe(0);
+  });
+
+  it.each([BookingStatus.CONFIRMED, BookingStatus.CANCELLED])(
+    'rejects initiation for a %s Booking without creating a Payment',
+    async (status) => {
+      const booking = await createBooking(
+        `DONE-${status}`,
+        300_000n,
+        true,
+        true,
+      );
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { status },
+      });
+
+      await expect(
+        payments.initiateSepay(customerId, booking.id),
+      ).rejects.toMatchObject({ status: 409 });
+      await expect(
+        prisma.payment.count({ where: { bookingId: booking.id } }),
+      ).resolves.toBe(0);
+    },
+  );
+
+  it('does not create a SePay purchase for a free Booking', async () => {
+    const booking = await createBooking('FREE-INIT', 0n, true, true);
+    await expect(
+      payments.initiateSepay(customerId, booking.id),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      prisma.payment.count({ where: { bookingId: booking.id } }),
+    ).resolves.toBe(0);
   });
 
   async function createPayment(
