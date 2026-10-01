@@ -345,6 +345,43 @@ payment was received while booking confirmation requires attention.
 `Payment SUCCEEDED` with `Booking CONFIRMED` renders final success. Cancel/error
 callbacks still display a successful payment if that is the backend state.
 
+## Customer Checkout E2E
+
+The frontend reuses `/bookings/checkout` for the complete customer flow:
+
+```text
+Booking Hold (authoritative BookingItem price snapshot + expiresAt)
+  -> GoBook checkout summary and countdown
+  -> POST /api/v1/payments/sepay with bookingId only
+  -> validate the backend redirect contract
+  -> HTML form POST of every signed formFields entry
+  -> SePay hosted checkout displays the bank-transfer QR
+  -> authenticated SePay IPN
+  -> atomic Payment / Booking / Reservation confirmation
+  -> browser callback to /payment/result
+  -> GET /api/v1/payments/:paymentId
+  -> backend-derived result UI
+```
+
+GoBook does not render or invent a QR payload, bank account, BIN, amount, or
+signature. The payment URL is used only as the action of a POST form created
+from the trusted initiation response; it is never accepted from a query string,
+local storage, or user input.
+
+The checkout countdown always subtracts the browser's current time from the
+backend `Booking.expiresAt`. Refreshing the page reloads the same snapshot and
+does not create a new ten-minute timer. Reaching zero disables initiation, but
+the backend's database clock remains authoritative and a 409 response overrides
+the local display.
+
+The result route treats `return=success|error|cancel` only as browser-navigation
+context. It polls the customer-owned status endpoint every 2.5 seconds while
+Payment is `PENDING`, or while Payment is `SUCCEEDED` and Booking is still
+`PENDING_PAYMENT`. Polling stops for confirmed, expired, and cancelled states.
+It also stops aggressive polling after the Booking expiry plus a two-minute
+grace period and leaves an unresolved transaction as waiting, never as a
+fabricated failure or success.
+
 ## Atomic Success Boundary
 
 ```text

@@ -34,11 +34,11 @@ body {
   }
 
   .primary-button {
-    @apply rounded-xl bg-teal-300 px-6 py-3 font-semibold text-slate-950 transition hover:bg-teal-200 disabled:opacity-60;
+    @apply rounded-xl bg-teal-300 px-6 py-3 font-semibold text-slate-950 outline-none transition hover:bg-teal-200 focus-visible:ring-2 focus-visible:ring-teal-100 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .secondary-button {
-    @apply rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-white disabled:opacity-60;
+    @apply rounded-xl border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 outline-none transition hover:border-slate-500 hover:text-white focus-visible:ring-2 focus-visible:ring-teal-300 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .light-button {
