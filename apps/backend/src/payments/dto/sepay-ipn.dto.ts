@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   Allow,
+  IsDefined,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -161,11 +162,13 @@ export class SepayIpnDto {
   notification_type: string;
 
   @ApiProperty({ type: SepayIpnOrderDto })
+  @IsDefined()
   @ValidateNested()
   @Type(() => SepayIpnOrderDto)
   order: SepayIpnOrderDto;
 
   @ApiProperty({ type: SepayIpnTransactionDto })
+  @IsDefined()
   @ValidateNested()
   @Type(() => SepayIpnTransactionDto)
   transaction: SepayIpnTransactionDto;

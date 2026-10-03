@@ -39,7 +39,10 @@ async function seedHeldCheckout(page: Page, expiresAt: string) {
   await page.addInitScript(
     ({ held, draft }) => {
       sessionStorage.setItem("gobook.accessToken", "e2e-customer-token");
-      sessionStorage.setItem("gobook.bookingCheckout.held", JSON.stringify(held));
+      sessionStorage.setItem(
+        "gobook.bookingCheckout.held",
+        JSON.stringify(held),
+      );
       sessionStorage.setItem(
         "gobook.bookingCheckout.draft",
         JSON.stringify(draft),
@@ -191,7 +194,9 @@ test("held booking -> SePay POST boundary -> authoritative confirmation", async 
   });
 });
 
-test("fake success URL cannot override PENDING backend state", async ({ page }) => {
+test("fake success URL cannot override PENDING backend state", async ({
+  page,
+}) => {
   const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
   await seedHeldCheckout(page, expiresAt);
   await page.route(`**/api/v1/payments/${paymentId}`, (route) =>
@@ -255,4 +260,101 @@ test("retry sends the same booking and accepts backend-controlled identity", asy
       ),
     )
     .toBe("GBKE2ECHECKOUT");
+});
+
+test("checkout refresh keeps the backend hold deadline", async ({ page }) => {
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+  await seedHeldCheckout(page, expiresAt);
+  await page.goto("/bookings/checkout?service=workshop-e2e");
+
+  const countdown = page.getByText(/^\d{2}:\d{2}$/).first();
+  await expect(countdown).toBeVisible();
+  const before = await countdown.textContent();
+  await page.reload();
+  await expect(page.getByText("Workshop thanh toán E2E")).toBeVisible();
+  await expect(countdown).toBeVisible();
+  const after = await countdown.textContent();
+  const seconds = (value: string | null) => {
+    const [minutes, remainder] = (value ?? "").split(":").map(Number);
+    return minutes * 60 + remainder;
+  };
+  expect(seconds(after)).toBeLessThanOrEqual(seconds(before));
+});
+
+test("result refresh fetches authoritative state again after a pending return", async ({
+  page,
+}) => {
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+  await seedHeldCheckout(page, expiresAt);
+  let confirmed = false;
+  let statusCalls = 0;
+  await page.route(`**/api/v1/payments/${paymentId}`, async (route) => {
+    statusCalls += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: paymentId,
+        status: confirmed ? "SUCCEEDED" : "PENDING",
+        amount: "250000",
+        currency: "VND",
+        booking: {
+          id: bookingId,
+          status: confirmed ? "CONFIRMED" : "PENDING_PAYMENT",
+        },
+        expiresAt,
+      }),
+    });
+  });
+
+  await page.goto(`/payment/result?paymentId=${paymentId}&return=success`);
+  await expect(
+    page.getByRole("heading", { name: "Đang xác nhận thanh toán" }),
+  ).toBeVisible();
+  confirmed = true;
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Thanh toán thành công" }),
+  ).toBeVisible();
+  expect(statusCalls).toBeGreaterThanOrEqual(2);
+});
+
+test("result polls through payment received and stops at Booking confirmation", async ({
+  page,
+}) => {
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+  await seedHeldCheckout(page, expiresAt);
+  let statusCalls = 0;
+  await page.route(`**/api/v1/payments/${paymentId}`, async (route) => {
+    statusCalls += 1;
+    const paymentSucceeded = statusCalls >= 2;
+    const bookingConfirmed = statusCalls >= 3;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: paymentId,
+        status: paymentSucceeded ? "SUCCEEDED" : "PENDING",
+        amount: "250000",
+        currency: "VND",
+        booking: {
+          id: bookingId,
+          status: bookingConfirmed ? "CONFIRMED" : "PENDING_PAYMENT",
+        },
+        expiresAt,
+      }),
+    });
+  });
+
+  await page.goto(`/payment/result?paymentId=${paymentId}&return=cancel`);
+  await expect(
+    page.getByRole("heading", { name: "Đang xác nhận thanh toán" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Hệ thống đang xác nhận đặt chỗ" }),
+  ).toBeVisible({ timeout: 8_000 });
+  await expect(
+    page.getByRole("heading", { name: "Thanh toán thành công" }),
+  ).toBeVisible({ timeout: 8_000 });
+  expect(statusCalls).toBe(3);
 });
