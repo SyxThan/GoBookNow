@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Ticket } from '../generated/prisma/client.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
 
 const CURRENT_TOKEN_VERSION = 1;
@@ -35,7 +36,10 @@ export class TicketTokenService {
     return `${payload}.${this.sign(payload).toString('base64url')}`;
   }
 
-  async verifyAndResolveToken(token: string): Promise<Ticket> {
+  async verifyAndResolveToken(
+    token: string,
+    client: Pick<Prisma.TransactionClient, 'ticket'> = this.prisma,
+  ): Promise<Ticket> {
     const parsed = this.parse(token);
     const expectedSignature = this.sign(parsed.payload);
     const suppliedSignature = Buffer.from(parsed.signature, 'base64url');
@@ -47,7 +51,7 @@ export class TicketTokenService {
       throw this.invalidToken();
     }
 
-    const ticket = await this.prisma.ticket.findUnique({
+    const ticket = await client.ticket.findUnique({
       where: { id: parsed.ticketId },
     });
     if (

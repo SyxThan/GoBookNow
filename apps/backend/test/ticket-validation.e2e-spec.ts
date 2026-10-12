@@ -372,6 +372,19 @@ describe('Vendor Ticket validation API (e2e, PostgreSQL)', () => {
       .expect(expectedStatus);
   }
 
+  async function checkInAs(
+    token: string,
+    userId = vendorAOwnerId,
+    roles?: string[],
+    expectedStatus?: number,
+  ) {
+    const call = request(app.getHttpServer())
+      .post('/api/v1/vendor/tickets/check-in')
+      .auth(await tokenFor(userId, roles), { type: 'bearer' })
+      .send({ token });
+    return expectedStatus === undefined ? call : call.expect(expectedStatus);
+  }
+
   it('returns VALID with historical title and safe Event/Slot context', async () => {
     const fixture = await createTicketFixture();
     const response = await validateAs(fixture.token);
@@ -576,6 +589,197 @@ describe('Vendor Ticket validation API (e2e, PostgreSQL)', () => {
     expect(response.body).toMatchObject({
       reason: TicketValidationReason.VALID,
       service: { title: 'Vendor B Snapshot' },
+    });
+  });
+
+  it('validates, checks in with the JWT actor, then reports ALREADY_CHECKED_IN', async () => {
+    const fixture = await createTicketFixture();
+    const bookingBefore = await prisma.booking.findUniqueOrThrow({
+      where: { id: fixture.booking.id },
+    });
+    const slotBefore = await prisma.slot.findUniqueOrThrow({
+      where: { id: activeEventSlotId },
+    });
+    await validateAs(fixture.token);
+
+    const response = await checkInAs(
+      fixture.token,
+      vendorAOwnerId,
+      undefined,
+      200,
+    );
+    expect(response.body).toMatchObject({
+      success: true,
+      ticket: {
+        id: fixture.ticket.id,
+        ticketCode: fixture.ticket.ticketCode,
+        status: TicketStatus.CHECKED_IN,
+      },
+      booking: { bookingCode: fixture.booking.bookingCode },
+      service: { title: 'Original Workshop', kind: ServiceKind.EVENT },
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /checkedInBy|tokenNonce|signature|customer|email|phone|payment/,
+    );
+
+    const stored = await prisma.ticket.findUniqueOrThrow({
+      where: { id: fixture.ticket.id },
+    });
+    expect(stored).toMatchObject({
+      status: TicketStatus.CHECKED_IN,
+      checkedInByUserId: vendorAOwnerId,
+    });
+    expect(stored.checkedInAt).toBeInstanceOf(Date);
+    await expect(
+      prisma.booking.findUniqueOrThrow({ where: { id: fixture.booking.id } }),
+    ).resolves.toEqual(bookingBefore);
+    await expect(
+      prisma.slot.findUniqueOrThrow({ where: { id: activeEventSlotId } }),
+    ).resolves.toEqual(slotBefore);
+
+    const validation = await validateAs(fixture.token);
+    expect(validation.body).toMatchObject({
+      authentic: true,
+      valid: true,
+      checkInEligible: false,
+      reason: TicketValidationReason.ALREADY_CHECKED_IN,
+      ticket: { checkedInAt: stored.checkedInAt?.toISOString() },
+    });
+  });
+
+  it('returns a retry-safe conflict without rewriting the original audit fields', async () => {
+    const fixture = await createTicketFixture();
+    await checkInAs(fixture.token, vendorAOwnerId, undefined, 200);
+    const first = await prisma.ticket.findUniqueOrThrow({
+      where: { id: fixture.ticket.id },
+    });
+
+    const duplicate = await checkInAs(
+      fixture.token,
+      vendorAOwnerId,
+      undefined,
+      409,
+    );
+    expect(duplicate.body).toMatchObject({
+      code: TicketValidationReason.ALREADY_CHECKED_IN,
+      checkedInAt: first.checkedInAt?.toISOString(),
+    });
+
+    const after = await prisma.ticket.findUniqueOrThrow({
+      where: { id: fixture.ticket.id },
+    });
+    expect(after.checkedInAt).toEqual(first.checkedInAt);
+    expect(after.checkedInByUserId).toBe(first.checkedInByUserId);
+  });
+
+  it('allows exactly one winner under a concurrent double scan', async () => {
+    const fixture = await createTicketFixture();
+    const responses = await Promise.all([
+      checkInAs(fixture.token),
+      checkInAs(fixture.token),
+    ]);
+
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
+      [200, 409],
+    );
+    expect(responses.find(({ status }) => status === 409)?.body).toMatchObject({
+      code: TicketValidationReason.ALREADY_CHECKED_IN,
+    });
+
+    const stored = await prisma.ticket.findUniqueOrThrow({
+      where: { id: fixture.ticket.id },
+    });
+    expect(stored).toMatchObject({
+      status: TicketStatus.CHECKED_IN,
+      checkedInByUserId: vendorAOwnerId,
+    });
+    expect(stored.checkedInAt).toBeInstanceOf(Date);
+  });
+
+  it('denies cross-Vendor check-in before mutation', async () => {
+    const fixture = await createTicketFixture();
+    await checkInAs(fixture.token, vendorBOwnerId, undefined, 403);
+
+    const stored = await prisma.ticket.findUniqueOrThrow({
+      where: { id: fixture.ticket.id },
+    });
+    expect(stored).toMatchObject({
+      status: TicketStatus.ISSUED,
+      checkedInAt: null,
+      checkedInByUserId: null,
+    });
+  });
+
+  it('rejects invalid, voided, future, expired, and cancelled Ticket contexts', async () => {
+    await checkInAs('not-a-ticket-token', vendorAOwnerId, undefined, 400);
+
+    const cases = [
+      {
+        input: { ticketStatus: TicketStatus.VOIDED },
+        reason: TicketValidationReason.TICKET_VOIDED,
+      },
+      {
+        input: { slotId: futureSlotId },
+        reason: TicketValidationReason.SLOT_NOT_STARTED,
+      },
+      {
+        input: { slotId: expiredSlotId },
+        reason: TicketValidationReason.SLOT_EXPIRED,
+      },
+      {
+        input: { slotId: cancelledSlotId },
+        reason: TicketValidationReason.SLOT_CANCELLED,
+      },
+      {
+        input: { bookingStatus: BookingStatus.CANCELLED },
+        reason: TicketValidationReason.BOOKING_CANCELLED,
+      },
+      {
+        input: { bookingStatus: BookingStatus.EXPIRED },
+        reason: TicketValidationReason.BOOKING_EXPIRED,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const fixture = await createTicketFixture(testCase.input);
+      const response = await checkInAs(
+        fixture.token,
+        vendorAOwnerId,
+        undefined,
+        409,
+      );
+      expect(response.body).toMatchObject({ code: testCase.reason });
+      const stored = await prisma.ticket.findUniqueOrThrow({
+        where: { id: fixture.ticket.id },
+      });
+      expect(stored.status).toBe(fixture.ticket.status);
+      expect(stored.checkedInByUserId).toBeNull();
+    }
+  });
+
+  it('allows CLOSED Slots during their active time and enforces endpoint guards', async () => {
+    const closed = await createTicketFixture({ slotId: closedSlotId });
+    await checkInAs(closed.token, vendorAOwnerId, undefined, 200);
+
+    const guarded = await createTicketFixture();
+    await checkInAs(guarded.token, draftVendorOwnerId, undefined, 403);
+    await checkInAs(guarded.token, customerId, [RoleCode.CUSTOMER], 403);
+    await request(app.getHttpServer())
+      .post('/api/v1/vendor/tickets/check-in')
+      .send({ token: guarded.token })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/vendor/tickets/check-in')
+      .auth(await tokenFor(vendorAOwnerId), { type: 'bearer' })
+      .send({ token: guarded.token, checkedInByUserId: customerId })
+      .expect(400);
+    await expect(
+      prisma.ticket.findUniqueOrThrow({ where: { id: guarded.ticket.id } }),
+    ).resolves.toMatchObject({
+      status: TicketStatus.ISSUED,
+      checkedInAt: null,
+      checkedInByUserId: null,
     });
   });
 });

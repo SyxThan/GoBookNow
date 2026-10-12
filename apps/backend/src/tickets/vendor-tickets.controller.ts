@@ -9,6 +9,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
@@ -23,9 +24,14 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import type { CurrentUser } from '../auth/types/jwt-payload.type.js';
 import { SWAGGER_ACCESS_TOKEN_SECURITY } from '../swagger.js';
 import {
+  CheckInTicketDto,
+  TicketCheckInResultDto,
+} from './dto/ticket-check-in.dto.js';
+import {
   TicketValidationResultDto,
   ValidateTicketDto,
 } from './dto/ticket-validation.dto.js';
+import { TicketCheckInService } from './ticket-check-in.service.js';
 import { TicketValidationService } from './ticket-validation.service.js';
 
 @ApiTags('Vendor Tickets')
@@ -34,7 +40,10 @@ import { TicketValidationService } from './ticket-validation.service.js';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(RoleCode.VENDOR)
 export class VendorTicketsController {
-  constructor(private readonly validation: TicketValidationService) {}
+  constructor(
+    private readonly validation: TicketValidationService,
+    private readonly checkIns: TicketCheckInService,
+  ) {}
 
   @Post('validate')
   @HttpCode(HttpStatus.OK)
@@ -113,6 +122,39 @@ export class VendorTicketsController {
     @Body() dto: ValidateTicketDto,
   ): Promise<TicketValidationResultDto> {
     return this.validation.validateTokenForVendor({
+      token: dto.token,
+      actorUserId: user.id,
+    });
+  }
+
+  @Post('check-in')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Atomically check in an eligible opaque Ticket credential',
+    description:
+      'Revalidates the authoritative Ticket, Booking, Vendor, and Slot state under a database row lock. The actor and timestamp come from the JWT and database, never the request body.',
+  })
+  @ApiOkResponse({
+    type: TicketCheckInResultDto,
+    description: 'The first successful ISSUED to CHECKED_IN transition.',
+  })
+  @ApiBadRequestResponse({
+    description: 'Request validation failed or the credential is invalid.',
+  })
+  @ApiConflictResponse({
+    description:
+      'ALREADY_CHECKED_IN, TICKET_VOIDED, SLOT_NOT_STARTED, SLOT_EXPIRED, or another authoritative eligibility conflict.',
+  })
+  @ApiUnauthorizedResponse({ description: 'Bearer JWT is missing or expired.' })
+  @ApiForbiddenResponse({
+    description:
+      'VENDOR role, an approved Vendor profile, and Ticket ownership are required.',
+  })
+  checkIn(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Body() dto: CheckInTicketDto,
+  ): Promise<TicketCheckInResultDto> {
+    return this.checkIns.checkIn({
       token: dto.token,
       actorUserId: user.id,
     });

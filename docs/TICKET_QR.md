@@ -113,7 +113,7 @@ PostgreSQL `NOW()`, never the scanner device clock.
 Validation is strictly read-only. It does not change Ticket status,
 `checkedInAt`, nonce/version, Booking, Reservation, Payment, Slot, or capacity.
 
-## Scanner and future check-in flow
+## Scanner and check-in flow
 
 ```text
 Customer QR
@@ -124,15 +124,17 @@ Customer QR
   -> TicketValidationService
   -> green/yellow/red validation result
 
-Future POST /vendor/tickets/check-in
+POST /vendor/tickets/check-in
   -> revalidate inside its own database transaction
   -> authorize Vendor/staff
   -> require Ticket ISSUED
-  -> atomically ISSUED -> CHECKED_IN and set checkedInAt
+  -> atomically ISSUED -> CHECKED_IN
+  -> set checkedInAt from DB time and checkedInByUserId from auth.sub
   -> reject duplicate/concurrent scans
 ```
 
 The validation response is a snapshot and has a time-of-check/time-of-use gap.
-Future check-in must not trust an earlier `VALID` response; it must revalidate
-inside the mutation transaction. Scanner camera UI and check-in mutation are
-not part of this foundation.
+Check-in does not trust an earlier `VALID` response: it locks the Ticket and
+revalidates inside the mutation transaction. The mobile-first scanner lives at
+`/vendor/check-in`, pauses after one decoded frame, requires explicit operator
+confirmation, and retains a manual token fallback. See `TICKET_CHECK_IN.md`.
