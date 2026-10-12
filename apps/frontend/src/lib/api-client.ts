@@ -188,6 +188,30 @@ export type BookingHoldResponse = {
   }>;
 };
 
+export type TicketStatus = "ISSUED" | "CHECKED_IN" | "VOIDED";
+
+export type CustomerTicket = {
+  id: string;
+  ticketCode: string;
+  sequenceNo: number;
+  status: TicketStatus;
+  issuedAt: string;
+  checkedInAt: string | null;
+  bookingItem: {
+    serviceTitle: string;
+    slotStartAt: string;
+    slotEndAt: string;
+    quantity: number;
+  };
+};
+
+export type CustomerTicketList = {
+  bookingId: string;
+  bookingCode: string;
+  bookingStatus: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  tickets: CustomerTicket[];
+};
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -254,7 +278,10 @@ export function getPublicService(
   slug: string,
   signal?: AbortSignal,
 ): Promise<PublicServiceDetail> {
-  return publicGet<PublicServiceDetail>(`/services/${encodeURIComponent(slug)}`, signal);
+  return publicGet<PublicServiceDetail>(
+    `/services/${encodeURIComponent(slug)}`,
+    signal,
+  );
 }
 
 export function listPublicSlots(
@@ -402,6 +429,33 @@ export function getPaymentResult(
   return apiRequest<PaymentResult>(
     `/payments/${encodeURIComponent(paymentId)}`,
     { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
+}
+
+export function getBookingTickets(
+  bookingId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  signal?: AbortSignal,
+): Promise<CustomerTicketList> {
+  return apiRequest<CustomerTicketList>(
+    `/bookings/${encodeURIComponent(bookingId)}/tickets`,
+    { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
+}
+
+export function getTicketQr(
+  ticketId: string,
+  download: boolean,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<Blob> {
+  return apiDownload(
+    `/tickets/${encodeURIComponent(ticketId)}/qr${download ? "?download=true" : ""}`,
     accessToken,
     onToken,
   );

@@ -145,7 +145,7 @@ export function PaymentResultClient() {
           Đặt chỗ của bạn đã được xác nhận.
         </p>
         {details}
-        <ResultActions />
+        <ResultActions bookingId={payment.booking.id} />
       </ResultShell>
     );
   }
@@ -338,9 +338,17 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function ResultActions() {
+function ResultActions({ bookingId }: { bookingId?: string }) {
   return (
     <div className="mt-8 flex flex-wrap justify-center gap-3">
+      {bookingId ? (
+        <Link
+          href={`/bookings/${encodeURIComponent(bookingId)}`}
+          className="primary-button"
+        >
+          Xem vé điện tử
+        </Link>
+      ) : null}
       <Link href="/services" className="primary-button">
         Xem dịch vụ
       </Link>

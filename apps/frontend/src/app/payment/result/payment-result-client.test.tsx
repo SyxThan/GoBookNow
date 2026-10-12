@@ -85,6 +85,10 @@ describe("PaymentResultClient backend authority", () => {
     expect(
       screen.getByText("Đặt chỗ của bạn đã được xác nhận."),
     ).toBeVisible();
+    expect(screen.getByRole("link", { name: "Xem vé điện tử" })).toHaveAttribute(
+      "href",
+      "/bookings/booking-a",
+    );
   });
 
   it("distinguishes payment received from final booking confirmation", async () => {
