@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBookingHold,
+  checkInVendorTicket,
   getBookingTickets,
   getTicketQr,
   initiateSePayPayment,
+  validateVendorTicket,
 } from "./api-client";
 
 describe("createBookingHold", () => {
@@ -132,4 +134,36 @@ describe("Ticket API", () => {
       "Bearer customer-token",
     );
   });
+
+  it.each([
+    ["validate", validateVendorTicket],
+    ["check-in", checkInVendorTicket],
+  ] as const)(
+    "sends the opaque credential only in the POST body for %s",
+    async (path, call) => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ authentic: false, reason: "INVALID_TOKEN" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      await call("opaque-sensitive-value", "vendor-token", vi.fn());
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`http://localhost:3001/api/v1/vendor/tickets/${path}`);
+      expect(url).not.toContain("opaque-sensitive-value");
+      expect(init.method).toBe("POST");
+      expect(JSON.parse(String(init.body))).toEqual({
+        token: "opaque-sensitive-value",
+      });
+      expect(String(init.body)).not.toMatch(
+        /vendorId|userId|checkedInAt|status/,
+      );
+    },
+  );
 });

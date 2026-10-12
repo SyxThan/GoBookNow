@@ -15,7 +15,7 @@ import type { TicketValidationResultDto } from './dto/ticket-validation.dto.js';
 import { TicketTokenService } from './ticket-token.service.js';
 import { TicketValidationReason } from './ticket-validation.constants.js';
 
-const validationContextSelect = {
+export const ticketValidationContextSelect = {
   id: true,
   ticketCode: true,
   sequenceNo: true,
@@ -56,10 +56,20 @@ const validationContextSelect = {
   },
 } as const satisfies Prisma.TicketSelect;
 
-type ValidationContext = Prisma.TicketGetPayload<{
-  select: typeof validationContextSelect;
+export type TicketValidationContext = Prisma.TicketGetPayload<{
+  select: typeof ticketValidationContextSelect;
 }>;
 type DbNowRow = { now: Date };
+export type TicketValidationClient = Pick<
+  Prisma.TransactionClient,
+  'vendor' | 'ticket' | '$queryRaw'
+>;
+
+export type TicketValidationAssessment = {
+  valid: boolean;
+  checkInEligible: boolean;
+  reason: TicketValidationReason;
+};
 
 @Injectable()
 export class TicketValidationService {
@@ -72,15 +82,7 @@ export class TicketValidationService {
     token: string;
     actorUserId: string;
   }): Promise<TicketValidationResultDto> {
-    const vendor = await this.prisma.vendor.findFirst({
-      where: {
-        ownerUserId: input.actorUserId,
-        status: VendorStatus.APPROVED,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    if (!vendor) throw new ForbiddenException('Approved Vendor is required');
+    const vendorId = await this.requireApprovedVendorId(input.actorUserId);
 
     let ticketId: string;
     try {
@@ -91,10 +93,7 @@ export class TicketValidationService {
       throw error;
     }
 
-    const context = await this.prisma.ticket.findUnique({
-      where: { id: ticketId },
-      select: validationContextSelect,
-    });
+    const context = await this.findContext(ticketId);
     if (!context) {
       return this.decision(
         true,
@@ -104,50 +103,119 @@ export class TicketValidationService {
       );
     }
 
-    if (context.bookingItem.booking.vendorId !== vendor.id) {
-      throw new ForbiddenException('Ticket does not belong to this Vendor');
+    const assessmentBeforeTime = this.assessContextBeforeTime(
+      context,
+      vendorId,
+    );
+    if (assessmentBeforeTime) {
+      return this.toResult(context, assessmentBeforeTime);
     }
 
-    const result = this.withContext(context);
+    const now = await this.databaseNow();
+    const assessment = this.assessContext(context, vendorId, now);
+    return this.toResult(context, assessment);
+  }
+
+  async requireApprovedVendorId(
+    actorUserId: string,
+    client: TicketValidationClient = this.prisma,
+  ): Promise<string> {
+    const vendor = await client.vendor.findFirst({
+      where: {
+        ownerUserId: actorUserId,
+        status: VendorStatus.APPROVED,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!vendor) throw new ForbiddenException('Approved Vendor is required');
+    return vendor.id;
+  }
+
+  findContext(
+    ticketId: string,
+    client: TicketValidationClient = this.prisma,
+  ): Promise<TicketValidationContext | null> {
+    return client.ticket.findUnique({
+      where: { id: ticketId },
+      select: ticketValidationContextSelect,
+    });
+  }
+
+  assertVendorOwnership(
+    context: TicketValidationContext,
+    vendorId: string,
+  ): void {
+    if (context.bookingItem.booking.vendorId !== vendorId) {
+      throw new ForbiddenException('Ticket does not belong to this Vendor');
+    }
+  }
+
+  assessContext(
+    context: TicketValidationContext,
+    vendorId: string,
+    now: Date,
+  ): TicketValidationAssessment {
+    const assessmentBeforeTime = this.assessContextBeforeTime(
+      context,
+      vendorId,
+    );
+    if (assessmentBeforeTime) return assessmentBeforeTime;
+
+    if (now >= context.bookingItem.slot.endAt) {
+      return this.assessment(TicketValidationReason.SLOT_EXPIRED);
+    }
+    if (now < context.bookingItem.slot.startAt) {
+      return this.assessment(TicketValidationReason.SLOT_NOT_STARTED);
+    }
+
+    return this.assessment(TicketValidationReason.VALID);
+  }
+
+  assessContextBeforeTime(
+    context: TicketValidationContext,
+    vendorId: string,
+  ): TicketValidationAssessment | null {
+    this.assertVendorOwnership(context, vendorId);
     if (
-      context.bookingItem.service.vendorId !== vendor.id ||
+      context.bookingItem.service.vendorId !== vendorId ||
       context.bookingItem.slot.serviceId !== context.bookingItem.service.id ||
       context.bookingItem.service.deletedAt ||
       context.bookingItem.slot.deletedAt
     ) {
-      return result(
-        false,
-        false,
-        TicketValidationReason.INCONSISTENT_TICKET_DATA,
-      );
+      return this.assessment(TicketValidationReason.INCONSISTENT_TICKET_DATA);
     }
 
     if (context.status === TicketStatus.VOIDED) {
-      return result(false, false, TicketValidationReason.TICKET_VOIDED);
+      return this.assessment(TicketValidationReason.TICKET_VOIDED);
     }
 
     const bookingReason = this.bookingFailureReason(
       context.bookingItem.booking.status,
     );
-    if (bookingReason) return result(false, false, bookingReason);
+    if (bookingReason) return this.assessment(bookingReason);
 
     if (context.bookingItem.slot.status === SlotStatus.CANCELLED) {
-      return result(false, false, TicketValidationReason.SLOT_CANCELLED);
+      return this.assessment(TicketValidationReason.SLOT_CANCELLED);
     }
 
     if (context.status === TicketStatus.CHECKED_IN) {
-      return result(true, false, TicketValidationReason.ALREADY_CHECKED_IN);
+      return this.assessment(TicketValidationReason.ALREADY_CHECKED_IN);
     }
+    return null;
+  }
 
-    const now = await this.databaseNow();
-    if (now >= context.bookingItem.slot.endAt) {
-      return result(false, false, TicketValidationReason.SLOT_EXPIRED);
-    }
-    if (now < context.bookingItem.slot.startAt) {
-      return result(true, false, TicketValidationReason.SLOT_NOT_STARTED);
-    }
-
-    return result(true, true, TicketValidationReason.VALID);
+  toResult(
+    context: TicketValidationContext,
+    assessment: TicketValidationAssessment,
+  ): TicketValidationResultDto {
+    return this.decision(
+      true,
+      assessment.valid,
+      assessment.checkInEligible,
+      assessment.reason,
+      context,
+    );
   }
 
   private invalidToken(): TicketValidationResultDto {
@@ -174,13 +242,17 @@ export class TicketValidationService {
     return null;
   }
 
-  private withContext(context: ValidationContext) {
-    return (
-      valid: boolean,
-      checkInEligible: boolean,
-      reason: TicketValidationReason,
-    ): TicketValidationResultDto =>
-      this.decision(true, valid, checkInEligible, reason, context);
+  private assessment(
+    reason: TicketValidationReason,
+  ): TicketValidationAssessment {
+    return {
+      valid:
+        reason === TicketValidationReason.VALID ||
+        reason === TicketValidationReason.SLOT_NOT_STARTED ||
+        reason === TicketValidationReason.ALREADY_CHECKED_IN,
+      checkInEligible: reason === TicketValidationReason.VALID,
+      reason,
+    };
   }
 
   private decision(
@@ -188,7 +260,7 @@ export class TicketValidationService {
     valid: boolean,
     checkInEligible: boolean,
     reason: TicketValidationReason,
-    context?: ValidationContext,
+    context?: TicketValidationContext,
   ): TicketValidationResultDto {
     if (!context) return { authentic, valid, checkInEligible, reason };
 
@@ -224,8 +296,10 @@ export class TicketValidationService {
     };
   }
 
-  private async databaseNow(): Promise<Date> {
-    const [row] = await this.prisma.$queryRaw<DbNowRow[]>`
+  async databaseNow(
+    client: TicketValidationClient = this.prisma,
+  ): Promise<Date> {
+    const [row] = await client.$queryRaw<DbNowRow[]>`
       SELECT NOW() AS "now"
     `;
     if (!row) throw new Error('Database did not return its current time');

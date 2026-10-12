@@ -1132,9 +1132,8 @@ ISSUED
 └── VOIDED
 ```
 
-`CHECKED_IN` and `VOIDED` are terminal for normal flows. This foundation only
-defines the states and credential model. It does not implement check-in or
-void/cancellation orchestration yet.
+`CHECKED_IN` and `VOIDED` are terminal for normal flows. Check-in is implemented;
+void/cancellation orchestration remains future work.
 
 Ticket issuance is a separate post-confirmation operation. It requires a
 `CONFIRMED` Booking and defensively requires every related Reservation to be
@@ -1144,9 +1143,10 @@ quantity, or Slot capacity.
 
 Cryptographic verification establishes that a credential is authentic and
 resolves its Ticket, regardless of whether the current status is `ISSUED`,
-`CHECKED_IN`, or `VOIDED`. A future check-in service must separately authorize
-Vendor/staff, require `ISSUED`, atomically transition to `CHECKED_IN`, set
-`checkedInAt`, and prevent duplicate redemption.
+`CHECKED_IN`, or `VOIDED`. `TicketCheckInService` separately authorizes the
+approved owning Vendor, requires `ISSUED`, atomically transitions to
+`CHECKED_IN`, sets `checkedInAt` from database time and `checkedInByUserId` from
+the authenticated User, and prevents duplicate redemption.
 
 ---
 
@@ -1179,6 +1179,30 @@ window pass. Time comparisons use PostgreSQL `NOW()`.
 
 Validation never writes `status`, `checkedInAt`, `voidedAt`, `tokenNonce`, or
 `tokenVersion`, and never mutates Booking, Reservation, Payment, Slot, or
-capacity. A result is only a snapshot. The future check-in transaction must
-repeat credential, ownership, state, and time validation before atomically
+capacity. A result is only a snapshot. The implemented check-in transaction
+repeats credential, ownership, state, and time validation before atomically
 changing `ISSUED -> CHECKED_IN`.
+
+---
+
+# 32. Ticket Check-In Update
+
+```text
+ISSUED
+  └── approved owning Vendor confirms check-in
+      └── CHECKED_IN (terminal)
+```
+
+The transition runs in one PostgreSQL transaction. It locks the Ticket row,
+uses transaction database time, reuses the validation policy, and issues a
+conditional update that still requires `status = ISSUED`. The same transaction
+stores:
+
+```text
+checkedInAt       = database NOW()
+checkedInByUserId = auth.sub
+```
+
+Sequential retries and losing concurrent requests return
+`409 ALREADY_CHECKED_IN`; neither may change the original audit values. There
+is no `CHECKED_IN -> ISSUED` transition, re-entry, or undo path in the MVP.

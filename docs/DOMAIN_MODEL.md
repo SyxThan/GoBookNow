@@ -3841,5 +3841,9 @@ Scanner QR
   -> future atomic Check-In service
 ```
 
-QR rendering, public Ticket UI, scanner endpoints, PDF/Wallet artifacts, email,
-transfer, and cancellation-to-void integration are outside this foundation.
+QR rendering, customer Ticket UI, Vendor validation, and atomic check-in are
+implemented. Ticket now stores the optional audit relation
+`checkedInByUserId -> User.id` alongside `checkedInAt`; the authenticated User
+and database clock are the only sources for those values. PDF/Wallet artifacts,
+email, transfer, re-entry/history, and cancellation-to-void integration remain
+outside this release.
