@@ -779,7 +779,7 @@ trong customer flow MVP.
 Không làm:
 
 ```typescript
-booking.status = input.status
+booking.status = input.status;
 ```
 
 từ frontend.
@@ -1147,3 +1147,38 @@ resolves its Ticket, regardless of whether the current status is `ISSUED`,
 `CHECKED_IN`, or `VOIDED`. A future check-in service must separately authorize
 Vendor/staff, require `ISSUED`, atomically transition to `CHECKED_IN`, set
 `checkedInAt`, and prevent duplicate redemption.
+
+---
+
+# 31. Ticket Validation Update
+
+`POST /api/v1/vendor/tickets/validate` observes the Ticket state machine but
+does not perform a transition:
+
+```text
+ISSUED     -> remains ISSUED
+CHECKED_IN -> remains CHECKED_IN
+VOIDED     -> remains VOIDED
+```
+
+The endpoint distinguishes credential authenticity, entitlement validity, and
+eligibility to check in at the current database time:
+
+```text
+ISSUED + CONFIRMED + active Slot  -> VALID
+ISSUED + future Slot              -> SLOT_NOT_STARTED
+CHECKED_IN                        -> ALREADY_CHECKED_IN
+VOIDED                            -> TICKET_VOIDED
+cancelled/expired Booking         -> BOOKING_CANCELLED / BOOKING_EXPIRED
+cancelled/elapsed Slot            -> SLOT_CANCELLED / SLOT_EXPIRED
+```
+
+`Slot.CLOSED` represents closed booking availability, not cancellation of the
+scheduled occurrence, so it remains eligible when all other rules and the time
+window pass. Time comparisons use PostgreSQL `NOW()`.
+
+Validation never writes `status`, `checkedInAt`, `voidedAt`, `tokenNonce`, or
+`tokenVersion`, and never mutates Booking, Reservation, Payment, Slot, or
+capacity. A result is only a snapshot. The future check-in transaction must
+repeat credential, ownership, state, and time validation before atomically
+changing `ISSUED -> CHECKED_IN`.

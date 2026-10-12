@@ -63,18 +63,76 @@ use `Cache-Control: private, no-store` and must not be cached by shared proxies.
 - A Ticket whose Booking is no longer `CONFIRMED` cannot render a QR; the
   backend returns `409 BOOKING_NOT_CONFIRMED`.
 
-## Future scanner flow
+## Vendor validation API
+
+```text
+POST /api/v1/vendor/tickets/validate
+Authorization: Bearer <Vendor access token>
+Body: { "token": "<opaque-ticket-token>" }
+```
+
+Only a user with the `VENDOR` role and a non-deleted `APPROVED` Vendor profile
+may call this endpoint. The token is accepted only in the request body; it is
+never accepted in a URL, logged, or echoed in the response. Cryptographic
+parsing, HMAC verification, nonce checks, and token version checks remain the
+exclusive responsibility of `TicketTokenService.verifyAndResolveToken()`.
+
+Vendor ownership is derived from the authoritative relation:
+
+```text
+Ticket -> BookingItem -> Booking.vendorId -> Vendor.ownerUserId
+```
+
+Cross-Vendor validation returns `403` before Ticket context is disclosed. The
+response contains only safe Ticket, Booking, Service/Event, and Slot context.
+It does not contain customer PII, payment data, the credential, nonce,
+signature, signing secret, or Vendor legal data. The booked title and booked
+times come from BookingItem snapshots; current Slot state and current Slot
+times remain authoritative for validation.
+
+Completed validation decisions return HTTP `200`, including expected negative
+results such as `INVALID_TOKEN`, `TICKET_VOIDED`, `ALREADY_CHECKED_IN`,
+`SLOT_EXPIRED`, and `SLOT_NOT_STARTED`. Authentication, role, approval, and
+cross-Vendor failures remain HTTP `401`/`403`; malformed request DTOs return
+HTTP `400`.
+
+The result separates three concepts:
+
+- `authentic`: the opaque credential passed cryptographic and stored identity
+  checks.
+- `valid`: the Ticket entitlement remains valid.
+- `checkInEligible`: a future check-in operation may proceed now.
+- `reason`: a stable scanner-facing validation decision.
+
+An `ISSUED` Ticket in an active Slot is `VALID`. A future Slot is authentic and
+valid but returns `SLOT_NOT_STARTED`; an elapsed Slot returns `SLOT_EXPIRED`.
+`CANCELLED` rejects the Ticket, while `CLOSED` only closes booking availability
+and does not invalidate attendance by itself. Slot time comparisons use
+PostgreSQL `NOW()`, never the scanner device clock.
+
+Validation is strictly read-only. It does not change Ticket status,
+`checkedInAt`, nonce/version, Booking, Reservation, Payment, Slot, or capacity.
+
+## Scanner and future check-in flow
 
 ```text
 Customer QR
   -> Vendor/staff scanner
   -> decoded opaque credential
-  -> secure check-in API
+  -> POST /vendor/tickets/validate
   -> TicketTokenService.verifyAndResolveToken()
-  -> authorize Vendor/staff and validate Service ownership
+  -> TicketValidationService
+  -> green/yellow/red validation result
+
+Future POST /vendor/tickets/check-in
+  -> revalidate inside its own database transaction
+  -> authorize Vendor/staff
   -> require Ticket ISSUED
   -> atomically ISSUED -> CHECKED_IN and set checkedInAt
-  -> reject duplicate scans
+  -> reject duplicate/concurrent scans
 ```
 
-Scanner UI and check-in mutation are not part of this foundation.
+The validation response is a snapshot and has a time-of-check/time-of-use gap.
+Future check-in must not trust an earlier `VALID` response; it must revalidate
+inside the mutation transaction. Scanner camera UI and check-in mutation are
+not part of this foundation.
