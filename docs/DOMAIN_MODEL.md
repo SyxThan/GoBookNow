@@ -1761,15 +1761,23 @@ Fields:
 ```text
 id UUID PK
 
-booking_id UUID FK NOT NULL
-
 booking_item_id UUID FK NOT NULL
 
-token VARCHAR UNIQUE NOT NULL
+sequence_no INT NOT NULL
+
+ticket_code VARCHAR(40) UNIQUE NOT NULL
+
+token_nonce VARCHAR(64) UNIQUE NOT NULL
+
+token_version INT NOT NULL DEFAULT 1
 
 status TICKET_STATUS NOT NULL
 
+issued_at TIMESTAMPTZ NOT NULL
+
 checked_in_at TIMESTAMP NULL
+
+voided_at TIMESTAMP NULL
 
 created_at TIMESTAMP
 
@@ -1781,10 +1789,9 @@ updated_at TIMESTAMP
 # 63. Ticket Status
 
 ```text
-ACTIVE
+ISSUED
 CHECKED_IN
-CANCELLED
-EXPIRED
+VOIDED
 ```
 
 ---
@@ -1792,9 +1799,6 @@ EXPIRED
 # 64. Ticket Cardinality
 
 ```text
-Booking 1
- └── N Tickets
-
 BookingItem 1
  └── N Tickets
 ```
@@ -1805,7 +1809,7 @@ Nếu:
 quantity = 3
 ```
 
-khuyên tạo:
+phải tạo chính xác:
 
 ```text
 3 Tickets
@@ -1819,6 +1823,7 @@ Ticket owner suy ra:
 
 ```text
 Ticket
+→ BookingItem
 → Booking
 → Customer
 ```
@@ -3757,3 +3762,84 @@ Business records should not normally be physically deleted. Foreign keys from
 User, Vendor, Service, and Slot use `RESTRICT`. `Booking -> BookingItem` and
 `BookingItem -> Reservation` use `CASCADE` to keep test cleanup and aggregate
 cleanup coherent; the application must not expose hard-delete Booking APIs.
+
+## Implemented Ticket domain foundation
+
+The implemented cardinality is:
+
+```text
+Booking 1 ── N BookingItem 1 ── N Ticket
+```
+
+For every BookingItem, the invariant is:
+
+```text
+Ticket count = BookingItem.quantity
+Ticket sequenceNo = 1..BookingItem.quantity
+```
+
+For example, item quantities `2` and `3` produce five Tickets total. The
+database unique constraint `(booking_item_id, sequence_no)` makes each booked
+unit addressable and is the final idempotency/concurrency guard. Ticket points
+only to BookingItem; Booking ownership is derived through
+`Ticket -> BookingItem -> Booking`, so there is no duplicated `bookingId` truth.
+
+Ticket fields include the UUID identity, `sequenceNo`, human-readable unique
+`ticketCode`, unique random `tokenNonce`, positive `tokenVersion`, lifecycle
+status, and issued/check-in/void timestamps. The BookingItem foreign key uses
+`ON DELETE RESTRICT`; historical credentials are invalidated with `VOIDED`, not
+hard-deleted by an API.
+
+### Identity and credential security
+
+`ticketCode` is an uppercase support identifier generated from cryptographically
+secure randomness. It is not authentication and must never be sufficient for
+check-in.
+
+The security credential is generated on demand and is not stored as plaintext:
+
+```text
+v1.<ticketId>.<tokenNonce>.<base64url HMAC-SHA256 signature>
+```
+
+The database stores the Ticket ID, at least 128 bits of random nonce entropy,
+and token version. `TICKET_TOKEN_SECRET` is server-only and must contain at
+least 32 bytes; no real secret belongs in source control or frontend variables.
+Verification parses and validates the format, compares the HMAC with a
+timing-safe operation, loads the Ticket, then rechecks the stored version and
+nonce. Version 1 uses one configured key; full key rotation is a future task.
+Raw signed tokens, nonces, and secrets must not be logged.
+
+### Issuance and future access contracts
+
+`TicketService.issueTicketsForBooking()` accepts only `CONFIRMED` Bookings and
+defensively requires `CONFIRMED` Reservations. It locks the Booking, creates
+missing unit sequences with conflict-safe inserts, and validates the final
+count for every item. Repeated and concurrent calls preserve existing Ticket
+codes, nonces, and `issuedAt`. Issuance does not consume capacity again or
+modify Payment/Reservation/Slot state.
+
+A future Customer endpoint may expose a Ticket only when:
+
+```text
+Ticket -> BookingItem -> Booking.customerId == auth.sub
+```
+
+Vendor scanner authorization is separate. The future QR pipeline is:
+
+```text
+Ticket
+  -> TicketTokenService.generateToken()
+  -> signed credential
+  -> QR encoder
+  -> Customer display
+
+Scanner QR
+  -> verify signature
+  -> resolve Ticket
+  -> authorize Vendor/staff and validate ownership/status
+  -> future atomic Check-In service
+```
+
+QR rendering, public Ticket UI, scanner endpoints, PDF/Wallet artifacts, email,
+transfer, and cancellation-to-void integration are outside this foundation.
