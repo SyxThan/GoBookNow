@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { ServicesModule } from './services/services.module.js';
 import { SlotsModule } from './slots/slots.module.js';
+import { TicketsModule } from './tickets/tickets.module.js';
 import { VendorApplicationsModule } from './vendor-applications/vendor-applications.module.js';
 import { VendorsModule } from './vendors/vendors.module.js';
 
@@ -31,6 +32,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     PaymentsModule,
     ServicesModule,
     SlotsModule,
+    TicketsModule,
     VendorsModule,
     VendorApplicationsModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error

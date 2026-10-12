@@ -84,6 +84,12 @@ enum ReservationStatus {
   RELEASED
 }
 
+enum TicketStatus {
+  ISSUED
+  CHECKED_IN
+  VOIDED
+}
+
 enum PricingSource {
   SERVICE
   SLOT
@@ -542,11 +548,41 @@ model BookingItem {
   slot    Slot    @relation(fields: [slotId], references: [id], onDelete: Restrict)
 
   reservation Reservation?
+  tickets     Ticket[]
 
   @@index([bookingId])
   @@index([serviceId])
   @@index([slotId])
   @@map("booking_items")
+}
+
+model Ticket {
+  id String @id @default(uuid()) @db.Uuid
+
+  bookingItemId String @map("booking_item_id") @db.Uuid
+
+  sequenceNo Int @map("sequence_no")
+
+  ticketCode String @unique @map("ticket_code") @db.VarChar(40)
+  tokenNonce String @unique @map("token_nonce") @db.VarChar(64)
+
+  tokenVersion Int @default(1) @map("token_version")
+
+  status TicketStatus @default(ISSUED)
+
+  issuedAt    DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+  checkedInAt DateTime? @map("checked_in_at") @db.Timestamptz(3)
+  voidedAt    DateTime? @map("voided_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Restrict)
+
+  @@unique([bookingItemId, sequenceNo])
+  @@index([bookingItemId])
+  @@index([status])
+  @@map("tickets")
 }
 
 model Reservation {

@@ -390,19 +390,17 @@ Nếu Attempt #1 thất bại và Attempt #2 vẫn pending thì Payment aggregat
 ## States
 
 ```text
-ACTIVE
+ISSUED
 CHECKED_IN
-CANCELLED
-EXPIRED
+VOIDED
 ```
 
 Flow:
 
 ```text
-ACTIVE
+ISSUED
  ├──→ CHECKED_IN
- ├──→ CANCELLED
- └──→ EXPIRED
+ └──→ VOIDED
 ```
 
 ---
@@ -411,39 +409,37 @@ ACTIVE
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ACTIVE
+    [*] --> ISSUED
 
-    ACTIVE --> CHECKED_IN: Vendor scans QR
-    ACTIVE --> CANCELLED: Booking cancelled
-    ACTIVE --> EXPIRED: Ticket no longer valid
+    ISSUED --> CHECKED_IN: Future authorized check-in
+    ISSUED --> VOIDED: Future cancellation/refund orchestration
 
     CHECKED_IN --> [*]
-    CANCELLED --> [*]
-    EXPIRED --> [*]
+    VOIDED --> [*]
 ```
 
 ---
 
 # 11. Ticket Rules
 
-## ACTIVE → CHECKED_IN
+## ISSUED → CHECKED_IN
 
 Điều kiện:
 
 ```text
 Booking CONFIRMED
 Ticket belongs to Vendor
-Ticket ACTIVE
+Ticket ISSUED
 ```
 
 ---
 
-## ACTIVE → CANCELLED
+## ISSUED → VOIDED
 
 Khi:
 
 ```text
-Booking CANCELLED
+Booking cancellation/refund flow invalidates the credential.
 ```
 
 ---
@@ -453,7 +449,7 @@ Booking CANCELLED
 Không được:
 
 ```text
-CHECKED_IN → ACTIVE
+CHECKED_IN → ISSUED
 ```
 
 trong flow thông thường.
@@ -520,7 +516,7 @@ CANCELLED
 Ticket vẫn:
 
 ```text
-CANCELLED
+VOIDED
 ```
 
 Không restore booking tự động.
@@ -656,7 +652,7 @@ Booking CONFIRMED
 Reservation CONFIRMED
         ↓
 
-Ticket ACTIVE
+Ticket ISSUED
 ```
 
 ---
@@ -730,7 +726,7 @@ Booking
 CONFIRMED → CANCELLED
 
 Ticket
-ACTIVE → CANCELLED
+ISSUED → VOIDED
 
 Refund
 → PENDING
@@ -757,7 +753,7 @@ CANCELLED → CONFIRMED
 Không cho:
 
 ```text
-CHECKED_IN → ACTIVE
+CHECKED_IN → ISSUED
 ```
 
 Không cho:
@@ -860,7 +856,7 @@ Reservation:
 HELD → CONFIRMED
 
 Ticket:
-ACTIVE → CHECKED_IN
+ISSUED → CHECKED_IN
 ```
 
 Log nên chứa:
@@ -886,7 +882,7 @@ Booking CONFIRMED
 ```
 
 ```text
-Ticket ACTIVE
+Ticket ISSUED
 → Booking CONFIRMED
 ```
 
@@ -950,11 +946,11 @@ PaymentAttempt PENDING
 ```text
 TICKET
 
-ACTIVE
+ISSUED
 → CHECKED_IN
 
-ACTIVE
-→ CANCELLED
+ISSUED
+→ VOIDED
 ```
 
 ```text
@@ -1002,8 +998,9 @@ IDEMPOTENCY
 
 Migration `booking_schema` implements the current Booking foundation with a
 smaller state surface than the broader MVP design above. Atomic payment
-settlement and hold expiration are implemented; ticket, refund, completion,
-notification, and payout behavior remain future tasks.
+settlement and hold expiration are implemented; refund, completion,
+notification, and payout behavior remain future tasks. The Ticket foundation
+is documented in section 30.
 
 ## Booking states currently represented in schema
 
@@ -1122,3 +1119,31 @@ If the worker runs late, capacity is still released on time because active
 capacity counts only `HELD` reservations where `expiresAt > database NOW()`.
 Finalization changes stale rows from `HELD` to `EXPIRED`; it is not the source
 of capacity correctness.
+
+---
+
+# 30. Ticket Domain Foundation Update
+
+Migration `ticket_domain` defines the implemented Ticket lifecycle as:
+
+```text
+ISSUED
+├── CHECKED_IN
+└── VOIDED
+```
+
+`CHECKED_IN` and `VOIDED` are terminal for normal flows. This foundation only
+defines the states and credential model. It does not implement check-in or
+void/cancellation orchestration yet.
+
+Ticket issuance is a separate post-confirmation operation. It requires a
+`CONFIRMED` Booking and defensively requires every related Reservation to be
+`CONFIRMED` with a quantity matching its BookingItem. It does not run inside the
+payment settlement transaction and does not mutate Payment, Reservation
+quantity, or Slot capacity.
+
+Cryptographic verification establishes that a credential is authentic and
+resolves its Ticket, regardless of whether the current status is `ISSUED`,
+`CHECKED_IN`, or `VOIDED`. A future check-in service must separately authorize
+Vendor/staff, require `ISSUED`, atomically transition to `CHECKED_IN`, set
+`checkedInAt`, and prevent duplicate redemption.
