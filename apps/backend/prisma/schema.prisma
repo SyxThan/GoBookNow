@@ -164,6 +164,7 @@ model User {
   reviewedVendorApplications      VendorApplication[]        @relation("VendorApplicationReviewer")
   vendorApplicationHistoryEntries VendorApplicationHistory[] @relation("VendorApplicationHistoryActor")
   actorAuditLogs                  AuditLog[]                 @relation("AuditActor")
+  checkedInTickets                Ticket[]                   @relation("TicketCheckedInBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -570,17 +571,20 @@ model Ticket {
 
   status TicketStatus @default(ISSUED)
 
-  issuedAt    DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
-  checkedInAt DateTime? @map("checked_in_at") @db.Timestamptz(3)
-  voidedAt    DateTime? @map("voided_at") @db.Timestamptz(3)
+  issuedAt          DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+  checkedInAt       DateTime? @map("checked_in_at") @db.Timestamptz(3)
+  checkedInByUserId String?   @map("checked_in_by_user_id") @db.Uuid
+  voidedAt          DateTime? @map("voided_at") @db.Timestamptz(3)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   bookingItem BookingItem @relation(fields: [bookingItemId], references: [id], onDelete: Restrict)
+  checkedInBy User?       @relation("TicketCheckedInBy", fields: [checkedInByUserId], references: [id], onDelete: Restrict)
 
   @@unique([bookingItemId, sequenceNo])
   @@index([bookingItemId])
+  @@index([checkedInByUserId])
   @@index([status])
   @@map("tickets")
 }

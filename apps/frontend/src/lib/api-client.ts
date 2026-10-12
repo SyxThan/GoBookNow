@@ -5,6 +5,7 @@ type ErrorPayload = {
   code?: string;
   message?: string | string[];
   slotId?: string;
+  checkedInAt?: string;
 };
 type AccessTokenPayload = { accessToken: string };
 
@@ -190,6 +191,60 @@ export type BookingHoldResponse = {
 
 export type TicketStatus = "ISSUED" | "CHECKED_IN" | "VOIDED";
 
+export type TicketValidationReason =
+  | "VALID"
+  | "INVALID_TOKEN"
+  | "TICKET_NOT_FOUND"
+  | "TICKET_VOIDED"
+  | "ALREADY_CHECKED_IN"
+  | "BOOKING_NOT_CONFIRMED"
+  | "BOOKING_CANCELLED"
+  | "BOOKING_EXPIRED"
+  | "SLOT_CANCELLED"
+  | "SLOT_EXPIRED"
+  | "SLOT_NOT_STARTED"
+  | "INCONSISTENT_TICKET_DATA";
+
+export type VendorTicketValidation = {
+  authentic: boolean;
+  valid: boolean;
+  checkInEligible: boolean;
+  reason: TicketValidationReason;
+  ticket?: {
+    id: string;
+    ticketCode: string;
+    status: TicketStatus;
+    sequenceNo: number;
+    checkedInAt: string | null;
+  };
+  booking?: {
+    id: string;
+    bookingCode: string;
+    status: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  };
+  service?: { id: string; title: string; kind: ServiceKind };
+  slot?: {
+    id: string;
+    startAt: string;
+    endAt: string;
+    status: "OPEN" | "CLOSED" | "CANCELLED";
+  };
+};
+
+export type TicketCheckInResult = {
+  success: true;
+  ticket: {
+    id: string;
+    ticketCode: string;
+    status: "CHECKED_IN";
+    sequenceNo: number;
+    checkedInAt: string;
+  };
+  booking: { bookingCode: string };
+  service: { title: string; kind: ServiceKind };
+  slot: { startAt: string; endAt: string };
+};
+
 export type CustomerTicket = {
   id: string;
   ticketCode: string;
@@ -217,7 +272,7 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly code?: string,
-    public readonly details?: { slotId?: string },
+    public readonly details?: { slotId?: string; checkedInAt?: string },
   ) {
     super(message);
     this.name = "ApiError";
@@ -239,7 +294,9 @@ async function readError(response: Response): Promise<ApiError> {
     response.status,
     message ?? `Request failed with status ${response.status}`,
     payload?.code,
-    payload?.slotId ? { slotId: payload.slotId } : undefined,
+    payload?.slotId || payload?.checkedInAt
+      ? { slotId: payload.slotId, checkedInAt: payload.checkedInAt }
+      : undefined,
   );
 }
 
@@ -456,6 +513,32 @@ export function getTicketQr(
 ): Promise<Blob> {
   return apiDownload(
     `/tickets/${encodeURIComponent(ticketId)}/qr${download ? "?download=true" : ""}`,
+    accessToken,
+    onToken,
+  );
+}
+
+export function validateVendorTicket(
+  token: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<VendorTicketValidation> {
+  return apiRequest<VendorTicketValidation>(
+    "/vendor/tickets/validate",
+    { method: "POST", body: JSON.stringify({ token }) },
+    accessToken,
+    onToken,
+  );
+}
+
+export function checkInVendorTicket(
+  token: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<TicketCheckInResult> {
+  return apiRequest<TicketCheckInResult>(
+    "/vendor/tickets/check-in",
+    { method: "POST", body: JSON.stringify({ token }) },
     accessToken,
     onToken,
   );
