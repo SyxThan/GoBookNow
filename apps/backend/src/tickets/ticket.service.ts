@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -8,9 +9,11 @@ import {
   BookingStatus,
   Prisma,
   ReservationStatus,
+  TicketStatus,
   type Ticket,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import type { CustomerTicketListResponseDto } from './dto/customer-ticket-response.dto.js';
 
 const ISSUANCE_ATTEMPTS = 5;
 const TICKET_CODE_BYTES = 6;
@@ -123,6 +126,103 @@ export class TicketService {
     const ticket = await this.prisma.ticket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Ticket not found');
     return ticket;
+  }
+
+  async getCustomerTicketsForBooking(
+    customerId: string,
+    bookingId: string,
+  ): Promise<CustomerTicketListResponseDto> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        bookingCode: true,
+        customerId: true,
+        status: true,
+        items: {
+          orderBy: { id: 'asc' },
+          select: {
+            quantity: true,
+            serviceTitleSnapshot: true,
+            slotStartAtSnapshot: true,
+            slotEndAtSnapshot: true,
+            tickets: {
+              orderBy: { sequenceNo: 'asc' },
+              select: {
+                id: true,
+                ticketCode: true,
+                sequenceNo: true,
+                status: true,
+                issuedAt: true,
+                checkedInAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+    if (booking.customerId !== customerId) {
+      throw new ForbiddenException('Booking belongs to another customer');
+    }
+
+    return {
+      bookingId: booking.id,
+      bookingCode: booking.bookingCode,
+      bookingStatus: booking.status,
+      tickets: booking.items.flatMap((item) =>
+        item.tickets.map((ticket) => ({
+          id: ticket.id,
+          ticketCode: ticket.ticketCode,
+          sequenceNo: ticket.sequenceNo,
+          status: ticket.status,
+          issuedAt: ticket.issuedAt.toISOString(),
+          checkedInAt: ticket.checkedInAt?.toISOString() ?? null,
+          bookingItem: {
+            serviceTitle: item.serviceTitleSnapshot,
+            slotStartAt: item.slotStartAtSnapshot.toISOString(),
+            slotEndAt: item.slotEndAtSnapshot.toISOString(),
+            quantity: item.quantity,
+          },
+        })),
+      ),
+    };
+  }
+
+  async getCustomerTicketForQr(
+    customerId: string,
+    ticketId: string,
+  ): Promise<Ticket> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        bookingItem: {
+          select: {
+            booking: { select: { customerId: true, status: true } },
+          },
+        },
+      },
+    });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+    if (ticket.bookingItem.booking.customerId !== customerId) {
+      throw new ForbiddenException('Ticket belongs to another customer');
+    }
+    if (ticket.bookingItem.booking.status !== BookingStatus.CONFIRMED) {
+      throw new ConflictException({
+        code: 'BOOKING_NOT_CONFIRMED',
+        message:
+          'Ticket QR is unavailable because the Booking is not confirmed',
+      });
+    }
+    if (ticket.status === TicketStatus.VOIDED) {
+      throw new ConflictException({
+        code: 'TICKET_VOIDED',
+        message: 'Voided Ticket QR is unavailable',
+      });
+    }
+
+    const { bookingItem: _bookingItem, ...credentialTicket } = ticket;
+    return credentialTicket;
   }
 
   private async lockBooking(
