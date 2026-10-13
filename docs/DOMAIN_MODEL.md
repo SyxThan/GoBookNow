@@ -991,74 +991,89 @@ ghế còn lại giả bằng capacity. Nếu cần optimization sau này mới 
 
 ---
 
-# 31. CancellationPolicy Entity
+# 31. CancellationPolicy Source
 
-## Table
-
-```text
-cancellation_policies
-```
-
-MVP có thể thiết kế policy ở cấp:
-
-```text
-Service
-```
-
-Fields:
-
-```text
-id UUID PK
-
-service_id UUID FK
-
-name VARCHAR
-
-is_active BOOLEAN
-
-created_at
-
-updated_at
-```
-
-Các rule có thể dùng JSON:
-
-```text
-rules JSONB
-```
-
-Ví dụ:
+MVP chưa có bảng quản trị policy theo Vendor/Service. Một provider tập trung
+cấp policy `STANDARD_V1` hiện tại chỉ khi tạo Booking mới. Representation dùng
+integer minutes và basis points, có version rõ ràng:
 
 ```json
-[
-  {
-    "beforeHours": 24,
-    "refundPercent": 100
-  },
-  {
-    "beforeHours": 0,
-    "refundPercent": 50
-  }
-]
+{
+  "version": 1,
+  "policyCode": "STANDARD_V1",
+  "tiers": [
+    { "minMinutesBeforeStart": 1440, "refundBps": 10000 },
+    { "minMinutesBeforeStart": 360, "refundBps": 5000 },
+    { "minMinutesBeforeStart": 0, "refundBps": 0 }
+  ],
+  "afterStart": { "cancellationAllowed": false, "refundBps": 0 }
+}
 ```
+
+Nếu bổ sung `cancellation_policies` trong tương lai, entity đó là policy source
+mutable; Booking vẫn phải lưu toàn bộ normalized snapshot thay vì chỉ lưu ID.
 
 ---
 
-# 32. Cancellation Snapshot
+# 32. Cancellation Policy Snapshot và Refund Evaluation
 
-Không reference policy live từ Booking.
-
-Booking phải snapshot:
+Booking không reference policy live. Policy được resolve, validate, normalize và
+snapshot ngay trong transaction tạo Booking:
 
 ```text
-cancellation_policy_snapshot JSONB
+Booking
+├── cancellation_policy_snapshot JSONB NULL
+└── BookingItems
+    ├── subtotal_amount
+    └── slot_start_at_snapshot
 ```
 
-khi confirm.
+Snapshot nullable để Booking legacy giữ `NULL`; không backfill bằng policy hiện
+tại. Cancellation evaluation của Booking legacy phải trả
+`POLICY_SNAPSHOT_MISSING`.
 
-Lý do:
+Policy MVP hiện tại là một policy cấp Booking, version `1`, code
+`STANDARD_V1`: từ 24 giờ được hoàn 100%, từ 6 giờ hoàn 50%, trước giờ bắt đầu
+hoàn 0% nhưng vẫn được hủy; từ đúng giờ bắt đầu trở đi không được hủy. Tỷ lệ
+được lưu bằng basis points (`10000` = 100%), không dùng số thực. Provider hiện
+tại chỉ cấp policy mặc định cho Booking mới; engine không gọi provider.
 
-Vendor thay policy không được ảnh hưởng booking cũ.
+Một Booking có thể chứa tối đa 10 BookingItem với nhiều thời điểm Slot khác
+nhau. Mỗi item dùng cùng policy snapshot nhưng được đánh giá độc lập bằng
+`BookingItem.subtotalAmount` và `BookingItem.slotStartAtSnapshot`:
+
+```text
+Booking policy snapshot
+├── Item A amount + start -> item refund
+├── Item B amount + start -> item refund
+└── Item C amount + start -> item refund
+                         ↓
+                    aggregate refund
+```
+
+Không áp dụng một phần trăm chung lên `Booking.totalAmount`. Công thức cho từng
+item dùng BigInt và floor division:
+
+```text
+itemRefund = itemSubtotal * refundBps / 10000
+itemFee = itemSubtotal - itemRefund
+
+bookingRefund = SUM(itemRefund)
+bookingFee = SUM(itemFee)
+```
+
+Trước khi tính phải kiểm tra `SUM(itemSubtotal) == Booking.totalAmount`; nếu
+không khớp, trả `BOOKING_AMOUNT_MISMATCH`. Engine chỉ dùng snapshot lịch sử,
+không đọc giá Service/Slot, thời gian Slot hoặc policy hiện tại.
+
+MVP chỉ đánh giá hủy toàn Booking. Tất cả item cancellable thì Booking có thể
+được hủy ở flow tương lai; có cả item cancellable và non-cancellable thì trả
+`PARTIAL_CANCELLATION_REQUIRED`; tất cả non-cancellable thì trả
+`CANCELLATION_NOT_ALLOWED`. Partial BookingItem cancellation chưa được hỗ trợ.
+
+Snapshot không được cập nhật khi policy, Service, Slot, Payment, Booking,
+Ticket hoặc check-in thay đổi. Vì vậy policy hiện tại thay đổi không thể làm
+thay đổi quyền lợi của Booking đã tồn tại.
 
 ---
 
