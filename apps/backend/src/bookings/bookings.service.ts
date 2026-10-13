@@ -16,6 +16,7 @@ import {
 import { PrismaService } from '../database/prisma/prisma.service.js';
 import { PricingService } from '../pricing/pricing.service.js';
 import { BookingCodeService } from './booking-code.service.js';
+import { CancellationPolicyProvider } from './cancellation/cancellation-policy.provider.js';
 import {
   bookingHoldResponseSelect,
   mapBookingHoldResponse,
@@ -79,6 +80,7 @@ export class BookingsService {
     private readonly capacity: CapacityService,
     private readonly pricing: PricingService,
     private readonly bookingCodes: BookingCodeService,
+    private readonly cancellationPolicies: CancellationPolicyProvider,
   ) {
     this.holdTtlMinutes = this.parseHoldTtlMinutes(
       this.config.get<string>('BOOKING_HOLD_TTL_MINUTES') ?? '10',
@@ -219,6 +221,8 @@ export class BookingsService {
       (sum, { snapshot }) => sum + snapshot.subtotalAmount,
       0n,
     );
+    const cancellationPolicySnapshot =
+      this.cancellationPolicies.createBookingSnapshot();
 
     const booking = await transaction.booking.create({
       data: {
@@ -229,6 +233,7 @@ export class BookingsService {
         currency,
         subtotalAmount,
         totalAmount: subtotalAmount,
+        cancellationPolicySnapshot,
         expiresAt,
         idempotencyKey,
         items: {

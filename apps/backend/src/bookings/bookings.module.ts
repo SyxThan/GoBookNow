@@ -4,6 +4,7 @@ import { PricingModule } from '../pricing/pricing.module.js';
 import { BookingCodeService } from './booking-code.service.js';
 import { BookingsController } from './bookings.controller.js';
 import { BookingsService } from './bookings.service.js';
+import { CancellationPolicyProvider } from './cancellation/cancellation-policy.provider.js';
 import { CapacityService } from './capacity.service.js';
 import { BookingExpirationScheduler } from './expiration/booking-expiration.scheduler.js';
 import { BookingExpirationService } from './expiration/booking-expiration.service.js';
@@ -15,6 +16,7 @@ import { BookingExpirationService } from './expiration/booking-expiration.servic
     BookingsService,
     CapacityService,
     BookingCodeService,
+    CancellationPolicyProvider,
     BookingExpirationService,
     BookingExpirationScheduler,
   ],

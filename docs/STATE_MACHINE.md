@@ -803,21 +803,39 @@ updateBookingStatus(status)
 
 ---
 
-# 23. Ví dụ Transition Guard
+# 23. Cancellation Evaluation Foundation
 
-Ví dụ cancel booking:
+Branch cancellation-policy chỉ tính entitlement, không thêm hoặc thực thi
+transition mới. Flow tương lai dự kiến:
 
 ```text
-IF booking.status != CONFIRMED
-    reject
-
-IF service already started
-    reject
-
-calculate refund
-
-Booking → CANCELLED
+Booking creation
+      ↓
+immutable cancellation policy snapshot
+      ↓
+Booking CONFIRMED
+      ↓
+customer requests cancellation
+      ↓
+load Booking snapshot and BookingItem snapshots
+      ↓
+calculate every BookingItem refund independently
+      ↓
+aggregate Booking refund
+      ↓
+future atomic Booking cancellation
+      ↓
+future Ticket VOID and refund obligation/execution
 ```
+
+Một Booking có thể chứa nhiều Slot start time. Không dùng earliest/latest/first
+Slot để áp dụng một tỷ lệ cho toàn Booking. Whole-Booking cancellation chỉ có
+thể tiếp tục khi mọi item đều cancellable. Nếu một số item đã non-cancellable
+nhưng item khác còn cancellable, evaluation trả
+`PARTIAL_CANCELLATION_REQUIRED`; partial item cancellation là future work.
+
+Không có `CONFIRMED -> CANCELLED` mutation, Reservation/Ticket/Payment mutation,
+hoặc refund execution trong task này.
 
 ---
 

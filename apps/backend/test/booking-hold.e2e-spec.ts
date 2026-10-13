@@ -358,6 +358,20 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
         },
       ],
     });
+    const storedBooking = await prisma.booking.findUniqueOrThrow({
+      where: { id: response.body.id as string },
+      select: { cancellationPolicySnapshot: true },
+    });
+    expect(storedBooking.cancellationPolicySnapshot).toEqual({
+      version: 1,
+      policyCode: 'STANDARD_V1',
+      tiers: [
+        { minMinutesBeforeStart: 1_440, refundBps: 10_000 },
+        { minMinutesBeforeStart: 360, refundBps: 5_000 },
+        { minMinutesBeforeStart: 0, refundBps: 0 },
+      ],
+      afterStart: { cancellationAllowed: false, refundBps: 0 },
+    });
 
     const inactiveCategory = await createCategory(
       CategoryScope.EVENT,
