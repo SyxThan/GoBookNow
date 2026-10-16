@@ -264,7 +264,60 @@ export type CustomerTicketList = {
   bookingId: string;
   bookingCode: string;
   bookingStatus: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  cancellation: BookingCancellationResult | null;
   tickets: CustomerTicket[];
+};
+
+export type CancellationReason =
+  | "FULL_REFUND"
+  | "PARTIAL_REFUND"
+  | "NO_REFUND"
+  | "PARTIAL_CANCELLATION_REQUIRED"
+  | "CANCELLATION_NOT_ALLOWED";
+
+export type BookingCancellationPreview = {
+  bookingId: string;
+  cancellationAllowed: boolean;
+  reason: CancellationReason;
+  originalAmount: string;
+  refundAmount: string;
+  cancellationFeeAmount: string;
+  currency: string;
+  policyVersion: number;
+  items: Array<{
+    bookingItemId: string;
+    originalAmount: string;
+    refundBps: number;
+    refundAmount: string;
+    cancellationFeeAmount: string;
+    cancellationAllowed: boolean;
+    reason:
+      | "FULL_REFUND"
+      | "PARTIAL_REFUND"
+      | "NO_REFUND"
+      | "CANCELLATION_NOT_ALLOWED";
+  }>;
+};
+
+export type BookingCancellationResult = {
+  cancellationId: string;
+  bookingId: string;
+  bookingStatus: "CANCELLED";
+  requestedAt: string;
+  cancelledAt: string;
+  originalAmount: string;
+  refundAmount: string;
+  cancellationFeeAmount: string;
+  currency: string;
+  policyVersion: number;
+  reason: CancellationReason;
+  refund: {
+    id: string;
+    status: "PENDING" | "SUCCEEDED" | "CANCELLED";
+    kind: "PARTIAL" | "FULL";
+    amount: string;
+    currency: string;
+  } | null;
 };
 
 export class ApiError extends Error {
@@ -500,6 +553,42 @@ export function getBookingTickets(
   return apiRequest<CustomerTicketList>(
     `/bookings/${encodeURIComponent(bookingId)}/tickets`,
     { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
+}
+
+export function previewBookingCancellation(
+  bookingId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<BookingCancellationPreview> {
+  return apiRequest<BookingCancellationPreview>(
+    `/bookings/${encodeURIComponent(bookingId)}/cancellation/preview`,
+    { method: "POST" },
+    accessToken,
+    onToken,
+  );
+}
+
+export function cancelBooking(
+  input: {
+    bookingId: string;
+    idempotencyKey: string;
+    reasonNote?: string;
+  },
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<BookingCancellationResult> {
+  return apiRequest<BookingCancellationResult>(
+    `/bookings/${encodeURIComponent(input.bookingId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": input.idempotencyKey },
+      body: JSON.stringify(
+        input.reasonNote ? { reasonNote: input.reasonNote } : {},
+      ),
+    },
     accessToken,
     onToken,
   );

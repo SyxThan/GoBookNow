@@ -139,6 +139,28 @@ export class TicketService {
         bookingCode: true,
         customerId: true,
         status: true,
+        cancelledAt: true,
+        cancellation: {
+          select: {
+            id: true,
+            requestedAt: true,
+            originalAmount: true,
+            refundAmount: true,
+            cancellationFeeAmount: true,
+            currency: true,
+            policyVersion: true,
+            policyResultSnapshot: true,
+            refund: {
+              select: {
+                id: true,
+                status: true,
+                kind: true,
+                amount: true,
+                currency: true,
+              },
+            },
+          },
+        },
         items: {
           orderBy: { id: 'asc' },
           select: {
@@ -170,6 +192,35 @@ export class TicketService {
       bookingId: booking.id,
       bookingCode: booking.bookingCode,
       bookingStatus: booking.status,
+      cancellation: booking.cancellation
+        ? {
+            cancellationId: booking.cancellation.id,
+            bookingId: booking.id,
+            bookingStatus: booking.status,
+            requestedAt: booking.cancellation.requestedAt.toISOString(),
+            cancelledAt: (
+              booking.cancelledAt ?? booking.cancellation.requestedAt
+            ).toISOString(),
+            originalAmount: booking.cancellation.originalAmount.toString(),
+            refundAmount: booking.cancellation.refundAmount.toString(),
+            cancellationFeeAmount:
+              booking.cancellation.cancellationFeeAmount.toString(),
+            currency: booking.cancellation.currency,
+            policyVersion: booking.cancellation.policyVersion,
+            reason: this.cancellationReason(
+              booking.cancellation.policyResultSnapshot,
+            ),
+            refund: booking.cancellation.refund
+              ? {
+                  id: booking.cancellation.refund.id,
+                  status: booking.cancellation.refund.status,
+                  kind: booking.cancellation.refund.kind,
+                  amount: booking.cancellation.refund.amount.toString(),
+                  currency: booking.cancellation.refund.currency,
+                }
+              : null,
+          }
+        : null,
       tickets: booking.items.flatMap((item) =>
         item.tickets.map((ticket) => ({
           id: ticket.id,
@@ -187,6 +238,18 @@ export class TicketService {
         })),
       ),
     };
+  }
+
+  private cancellationReason(snapshot: Prisma.JsonValue): string {
+    if (
+      typeof snapshot === 'object' &&
+      snapshot !== null &&
+      !Array.isArray(snapshot) &&
+      typeof snapshot.reason === 'string'
+    ) {
+      return snapshot.reason;
+    }
+    return 'NO_REFUND';
   }
 
   async getCustomerTicketForQr(

@@ -3,6 +3,9 @@ import {
   Body,
   Controller,
   Headers,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
   Res,
   UseGuards,
@@ -10,6 +13,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiConflictResponse,
   ApiHeader,
   ApiOkResponse,
   ApiTags,
@@ -25,6 +29,12 @@ import { SWAGGER_ACCESS_TOKEN_SECURITY } from '../swagger.js';
 import { BookingsService } from './bookings.service.js';
 import { BookingResponseDto } from './dto/booking-response.dto.js';
 import { CreateBookingHoldDto } from './dto/create-booking-hold.dto.js';
+import {
+  BookingCancellationResultDto,
+  CancellationPreviewResponseDto,
+  CancelBookingDto,
+} from './dto/booking-cancellation.dto.js';
+import { BookingCancellationService } from './cancellation/booking-cancellation.service.js';
 
 @ApiTags('Bookings')
 @ApiBearerAuth(SWAGGER_ACCESS_TOKEN_SECURITY)
@@ -32,7 +42,10 @@ import { CreateBookingHoldDto } from './dto/create-booking-hold.dto.js';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(RoleCode.CUSTOMER)
 export class BookingsController {
-  constructor(private readonly bookings: BookingsService) {}
+  constructor(
+    private readonly bookings: BookingsService,
+    private readonly cancellations: BookingCancellationService,
+  ) {}
 
   @Post('hold')
   @ApiHeader({
@@ -60,6 +73,61 @@ export class BookingsController {
       this.parseIdempotencyKey(idempotencyKeyHeader),
       dto,
     );
+    response.status(result.statusCode);
+    return result.body;
+  }
+
+  @Post(':bookingId/cancellation/preview')
+  @HttpCode(200)
+  @ApiOkResponse({
+    type: CancellationPreviewResponseDto,
+    description:
+      'Immutable item-level policy preview. The command recalculates at confirmation time.',
+  })
+  @ApiConflictResponse({
+    description:
+      'BOOKING_NOT_CONFIRMED, INCONSISTENT_PAYMENT_STATE, INCONSISTENT_RESERVATION_STATE, TICKET_ALREADY_USED, POLICY_SNAPSHOT_MISSING, or BOOKING_AMOUNT_MISMATCH.',
+  })
+  previewCancellation(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+  ): Promise<CancellationPreviewResponseDto> {
+    return this.cancellations.preview(user.id, bookingId);
+  }
+
+  @Post(':bookingId/cancel')
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'Stable cancellation request key, 1..100 characters.',
+  })
+  @ApiCreatedResponse({
+    type: BookingCancellationResultDto,
+    description:
+      'Booking, Reservations, Tickets, audit record, and optional PENDING Refund committed atomically.',
+  })
+  @ApiOkResponse({
+    type: BookingCancellationResultDto,
+    description: 'Idempotent replay of the existing cancellation.',
+  })
+  @ApiConflictResponse({
+    description:
+      'PARTIAL_CANCELLATION_REQUIRED, CANCELLATION_NOT_ALLOWED, TICKET_ALREADY_USED, POLICY_SNAPSHOT_MISSING, BOOKING_AMOUNT_MISMATCH, inconsistent aggregate state, or idempotency conflict.',
+  })
+  async cancel(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+    @Headers('idempotency-key')
+    idempotencyKeyHeader: string | string[] | undefined,
+    @Body() dto: CancelBookingDto = {},
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<BookingCancellationResultDto> {
+    const result = await this.cancellations.cancel({
+      actorUserId: user.id,
+      bookingId,
+      idempotencyKey: this.parseIdempotencyKey(idempotencyKeyHeader),
+      reasonNote: dto.reasonNote,
+    });
     response.status(result.statusCode);
     return result.body;
   }

@@ -57,15 +57,28 @@ export class TicketCheckInService {
     const preliminaryContext = await this.validation.findContext(ticketId);
     if (!preliminaryContext) throw this.invalidToken();
     this.validation.assertVendorOwnership(preliminaryContext, vendorId);
+    const bookingId = preliminaryContext.bookingItem.booking.id;
 
     return this.prisma.$transaction(async (transaction) => {
-      const locked = await transaction.$queryRaw<LockedTicketRow[]>(Prisma.sql`
+      const lockedBooking = await transaction.$queryRaw<LockedTicketRow[]>(
+        Prisma.sql`
+          SELECT "id"
+          FROM "bookings"
+          WHERE "id" = ${bookingId}::uuid
+          FOR UPDATE
+        `,
+      );
+      if (!lockedBooking[0]) throw this.invalidToken();
+
+      const lockedTicket = await transaction.$queryRaw<
+        LockedTicketRow[]
+      >(Prisma.sql`
         SELECT "id"
         FROM "tickets"
         WHERE "id" = ${ticketId}::uuid
         FOR UPDATE
       `);
-      if (!locked[0]) throw this.invalidToken();
+      if (!lockedTicket[0]) throw this.invalidToken();
 
       try {
         await this.ticketTokens.verifyAndResolveToken(input.token, transaction);

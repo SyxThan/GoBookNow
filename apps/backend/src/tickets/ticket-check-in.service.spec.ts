@@ -165,6 +165,19 @@ describe('TicketCheckInService', () => {
     expect(verifyAndResolveToken).toHaveBeenCalledTimes(2);
   });
 
+  it('locks Booking before Ticket to serialize check-in against cancellation', async () => {
+    const { service, transaction } = setup();
+
+    await service.checkIn({ token: 'opaque', actorUserId: ACTOR_ID });
+
+    const rawCalls = transaction.$queryRaw.mock.calls as Array<
+      [{ strings: readonly string[] }]
+    >;
+    expect(rawCalls).toHaveLength(2);
+    expect(rawCalls[0]![0].strings.join(' ')).toContain('"bookings"');
+    expect(rawCalls[1]![0].strings.join(' ')).toContain('"tickets"');
+  });
+
   it('rejects malformed credentials without opening a transaction', async () => {
     const { service, runTransaction } = setup({ invalidToken: true });
 

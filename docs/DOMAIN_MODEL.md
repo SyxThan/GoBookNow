@@ -2603,15 +2603,21 @@ BEGIN
 
 Lock Booking
 
-Validate state
+Lock Payment, Reservations, Tickets in canonical order
 
-Calculate refund
+Read database NOW and revalidate state/snapshots
 
-Booking CANCELLED
+Calculate item-level refund from immutable Booking snapshots
 
-Tickets CANCELLED
+Booking CONFIRMED → CANCELLED
 
-Create Refund
+Reservations CONFIRMED → RELEASED
+
+Tickets ISSUED → VOIDED
+
+Create BookingCancellation audit
+
+Create Refund PENDING when refundAmount > 0
 
 COMMIT
 ```
@@ -3904,9 +3910,57 @@ Scanner QR
   -> future atomic Check-In service
 ```
 
-QR rendering, customer Ticket UI, Vendor validation, and atomic check-in are
-implemented. Ticket now stores the optional audit relation
-`checkedInByUserId -> User.id` alongside `checkedInAt`; the authenticated User
-and database clock are the only sources for those values. PDF/Wallet artifacts,
-email, transfer, re-entry/history, and cancellation-to-void integration remain
-outside this release.
+QR rendering, customer Ticket UI, Vendor validation, atomic check-in, and
+cancellation-to-void integration are implemented. Ticket stores the optional
+audit relation `checkedInByUserId -> User.id` alongside `checkedInAt`; the
+authenticated User and database clock are the only sources for those values.
+PDF/Wallet artifacts, email, transfer, and re-entry/history remain outside this
+release.
+
+## Implemented Booking cancellation audit and orchestration
+
+The whole-Booking cancellation relation is:
+
+```text
+Booking 1 ── 0..1 BookingCancellation
+Booking 1 ── N BookingItem
+BookingItem 1 ── 0..1 Reservation
+BookingItem 1 ── N Ticket
+Booking 1 ── 0..1 Payment ── N Refund
+BookingCancellation 0..1 ── 0..1 Refund
+```
+
+`BookingCancellation` is immutable financial/audit history. Its unique
+`bookingId` prevents a second whole-Booking decision, while the globally unique
+`idempotencyKey` protects command retries. It records the authenticated actor,
+database `requestedAt`, safe optional note, original/refund/fee amounts,
+currency, policy version, sanitized item-level result snapshot, and the
+optional Refund created by that decision. All foreign keys use `RESTRICT`; no
+hard-delete API exists.
+
+Preview and confirmation use only the immutable
+`Booking.cancellationPolicySnapshot`, `Booking.totalAmount`, and each
+`BookingItem.subtotalAmount` / `slotStartAtSnapshot`. They never read a current
+Vendor policy, live Slot time, or live price. Money crosses JSON boundaries as
+integer strings.
+
+An accepted cancellation is one PostgreSQL transaction with canonical lock
+order:
+
+```text
+Booking -> Payment -> Reservations ordered by id -> Tickets ordered by id
+```
+
+The transaction recalculates with database `NOW()`, changes `CONFIRMED ->
+CANCELLED`, releases every `CONFIRMED` Reservation, voids only `ISSUED` Tickets,
+creates `BookingCancellation`, and creates a `Refund PENDING` through
+`RefundService` when the refund is positive. A zero-refund cancellation creates
+no Refund. Slot capacity is never mutated; released Reservations stop consuming
+capacity. Any checked-in Ticket, inconsistent Payment/Reservation, missing
+policy snapshot, amount mismatch, disallowed result, partial-item-only result,
+or Refund balance failure aborts the whole transaction.
+
+`Refund PENDING` is an internal obligation, not evidence that money reached the
+customer. Provider execution, attempts, reconciliation, notifications, SLAs,
+admin manual workflows, and partial BookingItem cancellation remain future
+work.

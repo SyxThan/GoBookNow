@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BookingStatus, TicketStatus } from '../../generated/prisma/client.js';
+import { BookingCancellationResultDto } from '../../bookings/dto/booking-cancellation.dto.js';
 
 export class CustomerTicketBookingItemDto {
   @ApiProperty({ example: 'Workshop Python' })
@@ -53,4 +54,11 @@ export class CustomerTicketListResponseDto {
 
   @ApiProperty({ type: [CustomerTicketDto] })
   tickets: CustomerTicketDto[];
+
+  @ApiPropertyOptional({
+    type: BookingCancellationResultDto,
+    nullable: true,
+    description: 'Persisted cancellation/refund summary for page refreshes.',
+  })
+  cancellation: BookingCancellationResultDto | null;
 }
