@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  cancelBooking,
   createBookingHold,
   checkInVendorTicket,
   getBookingTickets,
   getTicketQr,
   initiateSePayPayment,
+  previewBookingCancellation,
   validateVendorTicket,
 } from "./api-client";
 
@@ -49,6 +51,73 @@ describe("createBookingHold", () => {
     });
     expect(String(init.body)).not.toContain("customerId");
     expect(String(init.body)).not.toContain("price");
+  });
+});
+
+describe("Booking cancellation API", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("previews without sending browser-owned financial or time inputs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          bookingId: "booking-a",
+          cancellationAllowed: true,
+          reason: "NO_REFUND",
+          originalAmount: "100000",
+          refundAmount: "0",
+          cancellationFeeAmount: "100000",
+          currency: "VND",
+          policyVersion: 1,
+          items: [],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await previewBookingCancellation("booking-a", "token", vi.fn());
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://localhost:3001/api/v1/bookings/booking-a/cancellation/preview",
+    );
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+  });
+
+  it("sends only the safe note and stable Idempotency-Key on confirm", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          cancellationId: "cancellation-a",
+          bookingId: "booking-a",
+          bookingStatus: "CANCELLED",
+          refund: null,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await cancelBooking(
+      {
+        bookingId: "booking-a",
+        idempotencyKey: "cancel-key",
+        reasonNote: "Đổi kế hoạch",
+      },
+      "token",
+      vi.fn(),
+    );
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe(
+      "cancel-key",
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      reasonNote: "Đổi kế hoạch",
+    });
+    expect(String(init.body)).not.toMatch(
+      /refundAmount|refundBps|requestedAt|policy|status|ticket/i,
+    );
   });
 });
 

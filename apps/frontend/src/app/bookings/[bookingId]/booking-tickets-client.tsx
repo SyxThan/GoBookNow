@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -12,16 +12,21 @@ import {
 } from "react";
 import {
   ApiError,
+  cancelBooking,
   getBookingTickets,
   getTicketQr,
+  previewBookingCancellation,
+  type BookingCancellationPreview,
+  type BookingCancellationResult,
   type CustomerTicket,
   type TicketStatus,
 } from "@/lib/api-client";
-import { formatDate, formatTime } from "@/lib/format";
+import { formatDate, formatMoney, formatTime } from "@/lib/format";
 
 const ACCESS_TOKEN_KEY = "gobook.accessToken";
 
 export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
+  const queryClient = useQueryClient();
   const [accessToken, setAccessTokenState] = useState<string | null>(() =>
     typeof window === "undefined"
       ? null
@@ -38,6 +43,9 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
   );
   const qrUrlRef = useRef<string | null>(null);
   const requestSequence = useRef(0);
+  const cancellationKey = useRef<string | null>(null);
+  const [cancellationOpen, setCancellationOpen] = useState(false);
+  const [reasonNote, setReasonNote] = useState("");
 
   const setAccessToken = useCallback((token: string | null) => {
     setAccessTokenState(token);
@@ -51,6 +59,62 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
       getBookingTickets(bookingId, accessToken, setAccessToken, signal),
     retry: false,
   });
+
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      previewBookingCancellation(bookingId, accessToken, setAccessToken),
+  });
+
+  const cancellationMutation = useMutation({
+    mutationFn: () => {
+      cancellationKey.current ??= crypto.randomUUID();
+      return cancelBooking(
+        {
+          bookingId,
+          idempotencyKey: cancellationKey.current,
+          reasonNote: reasonNote.trim() || undefined,
+        },
+        accessToken,
+        setAccessToken,
+      );
+    },
+    onSuccess: (cancellation) => {
+      queryClient.setQueryData(
+        ["customer-booking-tickets", bookingId],
+        (current: typeof ticketQuery.data) =>
+          current
+            ? {
+                ...current,
+                bookingStatus: "CANCELLED" as const,
+                cancellation,
+                tickets: current.tickets.map((ticket) =>
+                  ticket.status === "ISSUED"
+                    ? { ...ticket, status: "VOIDED" as const }
+                    : ticket,
+                ),
+              }
+            : current,
+      );
+    },
+  });
+
+  function openCancellation(): void {
+    cancellationKey.current = null;
+    setReasonNote("");
+    cancellationMutation.reset();
+    previewMutation.reset();
+    setCancellationOpen(true);
+    previewMutation.mutate();
+  }
+
+  function closeCancellation(): void {
+    if (cancellationMutation.isPending) return;
+    setCancellationOpen(false);
+    cancellationKey.current = null;
+    setReasonNote("");
+    cancellationMutation.reset();
+    previewMutation.reset();
+  }
 
   const revokeQrUrl = useCallback(() => {
     if (qrUrlRef.current) URL.revokeObjectURL(qrUrlRef.current);
@@ -155,10 +219,25 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
               Vé điện tử của bạn
             </h1>
           </div>
-          <p className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300">
-            {booking.tickets.length} vé
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300">
+              {booking.tickets.length} vé
+            </p>
+            {booking.bookingStatus === "CONFIRMED" ? (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={openCancellation}
+              >
+                Hủy đặt chỗ
+              </button>
+            ) : null}
+          </div>
         </div>
+
+        {booking.cancellation ? (
+          <CancellationSummary cancellation={booking.cancellation} />
+        ) : null}
 
         {booking.tickets.length === 0 ? (
           <section className="panel mt-8 p-8 text-center text-slate-400">
@@ -197,7 +276,225 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
           onDownload={() => void downloadQr(selectedTicket)}
         />
       ) : null}
+      {cancellationOpen ? (
+        <CancellationDialog
+          preview={previewMutation.data ?? null}
+          previewPending={previewMutation.isPending}
+          previewError={previewMutation.error}
+          cancellation={cancellationMutation.data ?? null}
+          cancellationPending={cancellationMutation.isPending}
+          cancellationError={cancellationMutation.error}
+          reasonNote={reasonNote}
+          onReasonNoteChange={setReasonNote}
+          onRetryPreview={() => previewMutation.mutate()}
+          onConfirm={() => cancellationMutation.mutate()}
+          onClose={closeCancellation}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function CancellationSummary({
+  cancellation,
+}: {
+  cancellation: BookingCancellationResult;
+}) {
+  return (
+    <section className="panel mt-8 border border-amber-300/20 p-6">
+      <p className="eyebrow">Đặt chỗ đã hủy</p>
+      <h2 className="mt-2 text-xl font-semibold">Kết quả hoàn tiền</h2>
+      <div className="mt-5 grid gap-4 text-sm sm:grid-cols-3">
+        <Detail label="Tổng ban đầu">
+          {formatMoney(cancellation.originalAmount, cancellation.currency)}
+        </Detail>
+        <Detail label="Khoản hoàn">
+          {formatMoney(cancellation.refundAmount, cancellation.currency)}
+        </Detail>
+        <Detail label="Phí hủy">
+          {formatMoney(
+            cancellation.cancellationFeeAmount,
+            cancellation.currency,
+          )}
+        </Detail>
+      </div>
+      {cancellation.refund?.status === "PENDING" ? (
+        <p className="mt-5 rounded-xl bg-amber-300/10 p-4 text-sm text-amber-200">
+          Yêu cầu hoàn tiền đã được ghi nhận và đang chờ xử lý. Khoản tiền chưa
+          được xác nhận là đã về tài khoản.
+        </p>
+      ) : cancellation.refundAmount === "0" ? (
+        <p className="mt-5 text-sm text-slate-300">
+          Chính sách áp dụng không có khoản hoàn tiền.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function CancellationDialog({
+  preview,
+  previewPending,
+  previewError,
+  cancellation,
+  cancellationPending,
+  cancellationError,
+  reasonNote,
+  onReasonNoteChange,
+  onRetryPreview,
+  onConfirm,
+  onClose,
+}: {
+  preview: BookingCancellationPreview | null;
+  previewPending: boolean;
+  previewError: unknown;
+  cancellation: BookingCancellationResult | null;
+  cancellationPending: boolean;
+  cancellationError: unknown;
+  reasonNote: string;
+  onReasonNoteChange: (value: string) => void;
+  onRetryPreview: () => void;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const canConfirm =
+    preview?.cancellationAllowed === true &&
+    preview.reason !== "PARTIAL_CANCELLATION_REQUIRED" &&
+    !cancellation;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/90 p-5">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancellation-title"
+        className="panel my-8 w-full max-w-2xl p-6 shadow-2xl shadow-black/60 sm:p-8"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="eyebrow">Xác nhận hủy</p>
+            <h2 id="cancellation-title" className="mt-2 text-2xl font-semibold">
+              Chính sách hủy đặt chỗ
+            </h2>
+          </div>
+          <button
+            type="button"
+            aria-label="Đóng xác nhận hủy"
+            className="rounded-lg border border-white/10 px-3 py-2 text-slate-300 hover:text-white"
+            disabled={cancellationPending}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+
+        {previewPending ? (
+          <p className="mt-6" role="status">
+            Đang tính quyền hoàn tiền...
+          </p>
+        ) : previewError ? (
+          <div className="mt-6">
+            <p className="text-rose-300" role="alert">
+              {cancellationErrorMessage(previewError)}
+            </p>
+            <button
+              type="button"
+              className="secondary-button mt-4"
+              onClick={onRetryPreview}
+            >
+              Tính lại
+            </button>
+          </div>
+        ) : preview ? (
+          <>
+            <div className="mt-6 grid gap-4 rounded-2xl bg-white/5 p-5 sm:grid-cols-3">
+              <Detail label="Tổng ban đầu">
+                {formatMoney(preview.originalAmount, preview.currency)}
+              </Detail>
+              <Detail label="Dự kiến hoàn">
+                {formatMoney(preview.refundAmount, preview.currency)}
+              </Detail>
+              <Detail label="Phí hủy">
+                {formatMoney(preview.cancellationFeeAmount, preview.currency)}
+              </Detail>
+            </div>
+            <div className="mt-5 space-y-3">
+              {preview.items.map((item, index) => (
+                <div
+                  key={item.bookingItemId}
+                  className="flex flex-wrap justify-between gap-3 border-b border-white/10 pb-3 text-sm"
+                >
+                  <span>Hạng mục {index + 1}</span>
+                  <span className="text-slate-300">
+                    Hoàn {formatMoney(item.refundAmount, preview.currency)} ·
+                    Phí {formatMoney(item.cancellationFeeAmount, preview.currency)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {preview.refundAmount === "0" && preview.cancellationAllowed ? (
+              <p className="mt-5 rounded-xl bg-amber-300/10 p-4 text-sm text-amber-200">
+                Bạn vẫn có thể hủy, nhưng chính sách hiện tại không hoàn tiền.
+              </p>
+            ) : null}
+            {!preview.cancellationAllowed ||
+            preview.reason === "PARTIAL_CANCELLATION_REQUIRED" ? (
+              <p className="mt-5 rounded-xl bg-rose-300/10 p-4 text-sm text-rose-200">
+                {preview.reason === "PARTIAL_CANCELLATION_REQUIRED"
+                  ? "Một số hạng mục không thể hủy; GoBook hiện chưa hỗ trợ hủy từng phần."
+                  : "Chính sách không cho phép hủy đặt chỗ này."}
+              </p>
+            ) : null}
+            <p className="mt-5 text-sm text-slate-400">
+              Đây là bản xem trước. Hệ thống sẽ tính lại bằng thời gian máy chủ
+              khi bạn xác nhận, nên số tiền có thể thay đổi.
+            </p>
+            {canConfirm ? (
+              <label className="mt-5 block text-sm text-slate-300">
+                Lý do (không bắt buộc)
+                <textarea
+                  className="mt-2 min-h-20 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-slate-100"
+                  maxLength={500}
+                  value={reasonNote}
+                  onChange={(event) => onReasonNoteChange(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
+
+        {cancellationError ? (
+          <p className="mt-5 text-sm text-rose-300" role="alert">
+            {cancellationErrorMessage(cancellationError)}
+          </p>
+        ) : null}
+        {cancellation ? (
+          <div className="mt-6">
+            <CancellationSummary cancellation={cancellation} />
+          </div>
+        ) : null}
+        <div className="mt-7 flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={cancellationPending}
+            onClick={onClose}
+          >
+            {cancellation ? "Đóng" : "Quay lại"}
+          </button>
+          {!cancellation ? (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!canConfirm || cancellationPending}
+              onClick={onConfirm}
+            >
+              {cancellationPending ? "Đang hủy..." : "Xác nhận hủy"}
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -418,4 +715,27 @@ function ticketQrError(error: unknown): string {
     if (error.status === 409) return "Vé không còn khả dụng để hiển thị QR.";
   }
   return "Không thể tạo mã QR. Vui lòng thử lại.";
+}
+
+function cancellationErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return "Phiên đăng nhập đã hết hạn.";
+    if (error.status === 403) return "Bạn không có quyền hủy booking này.";
+    if (error.code === "TICKET_ALREADY_USED") {
+      return "Booking có vé đã check-in nên không thể hủy.";
+    }
+    if (error.code === "PARTIAL_CANCELLATION_REQUIRED") {
+      return "Một số hạng mục không thể hủy; GoBook chưa hỗ trợ hủy từng phần.";
+    }
+    if (error.code === "CANCELLATION_NOT_ALLOWED") {
+      return "Chính sách không cho phép hủy booking này.";
+    }
+    if (error.code === "POLICY_SNAPSHOT_MISSING") {
+      return "Booking cũ thiếu chính sách hủy; vui lòng liên hệ hỗ trợ.";
+    }
+    if (error.code === "INCONSISTENT_PAYMENT_STATE") {
+      return "Trạng thái thanh toán cần được hỗ trợ kiểm tra trước khi hủy.";
+    }
+  }
+  return "Không thể xử lý yêu cầu hủy. Bạn có thể thử lại an toàn.";
 }

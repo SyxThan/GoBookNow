@@ -3,8 +3,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { AnchorHTMLAttributes, ImgHTMLAttributes, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cancelBooking,
   getBookingTickets,
   getTicketQr,
+  previewBookingCancellation,
+  type BookingCancellationResult,
+  type BookingCancellationPreview,
   type CustomerTicket,
   type CustomerTicketList,
 } from "@/lib/api-client";
@@ -39,6 +43,8 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     ...actual,
     getBookingTickets: vi.fn(),
     getTicketQr: vi.fn(),
+    previewBookingCancellation: vi.fn(),
+    cancelBooking: vi.fn(),
   };
 });
 
@@ -61,7 +67,30 @@ const response: CustomerTicketList = {
   bookingId: "booking-a",
   bookingCode: "GBK-TEST",
   bookingStatus: "CONFIRMED",
+  cancellation: null,
   tickets: [issued],
+};
+
+const preview: BookingCancellationPreview = {
+  bookingId: "booking-a",
+  cancellationAllowed: true,
+  reason: "PARTIAL_REFUND",
+  originalAmount: "700000",
+  refundAmount: "400000",
+  cancellationFeeAmount: "300000",
+  currency: "VND",
+  policyVersion: 1,
+  items: [
+    {
+      bookingItemId: "item-a",
+      originalAmount: "700000",
+      refundBps: 5714,
+      refundAmount: "400000",
+      cancellationFeeAmount: "300000",
+      cancellationAllowed: true,
+      reason: "PARTIAL_REFUND",
+    },
+  ],
 };
 
 function renderTickets() {
@@ -84,6 +113,29 @@ describe("BookingTicketsClient", () => {
     sessionStorage.setItem("gobook.accessToken", "customer-token");
     vi.mocked(getBookingTickets).mockReset().mockResolvedValue(response);
     vi.mocked(getTicketQr).mockReset();
+    vi.mocked(previewBookingCancellation)
+      .mockReset()
+      .mockResolvedValue(preview);
+    vi.mocked(cancelBooking).mockReset().mockResolvedValue({
+      cancellationId: "cancellation-a",
+      bookingId: "booking-a",
+      bookingStatus: "CANCELLED",
+      requestedAt: "2026-10-16T03:00:00.000Z",
+      cancelledAt: "2026-10-16T03:00:00.000Z",
+      originalAmount: "700000",
+      refundAmount: "400000",
+      cancellationFeeAmount: "300000",
+      currency: "VND",
+      policyVersion: 1,
+      reason: "PARTIAL_REFUND",
+      refund: {
+        id: "refund-a",
+        status: "PENDING",
+        kind: "PARTIAL",
+        amount: "400000",
+        currency: "VND",
+      },
+    });
     createObjectURL.mockClear();
     revokeObjectURL.mockClear();
     vi.stubGlobal("URL", {
@@ -185,5 +237,158 @@ describe("BookingTicketsClient", () => {
     renderTickets();
     expect(await screen.findByText("Đã check-in")).toBeVisible();
     expect(screen.queryByText("Sẵn sàng sử dụng")).toBeNull();
+  });
+
+  it("loads and renders the transparent cancellation preview", async () => {
+    renderTickets();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hủy đặt chỗ" }),
+    );
+    await waitFor(() =>
+      expect(previewBookingCancellation).toHaveBeenCalledWith(
+        "booking-a",
+        "customer-token",
+        expect.any(Function),
+      ),
+    );
+    expect(await screen.findByText("400.000 ₫")).toBeVisible();
+    expect(screen.getAllByText("300.000 ₫").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/Hệ thống sẽ tính lại bằng thời gian máy chủ/),
+    ).toBeVisible();
+  });
+
+  it("allows an explicit zero-refund cancellation", async () => {
+    vi.mocked(previewBookingCancellation).mockResolvedValue({
+      ...preview,
+      reason: "NO_REFUND",
+      refundAmount: "0",
+      cancellationFeeAmount: "700000",
+      items: [
+        {
+          ...preview.items[0]!,
+          refundBps: 0,
+          refundAmount: "0",
+          cancellationFeeAmount: "700000",
+          reason: "NO_REFUND",
+        },
+      ],
+    });
+    renderTickets();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hủy đặt chỗ" }),
+    );
+    expect(
+      await screen.findByText(/không hoàn tiền/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Xác nhận hủy" }),
+    ).toBeEnabled();
+  });
+
+  it("blocks whole-booking confirmation when partial cancellation is required", async () => {
+    vi.mocked(previewBookingCancellation).mockResolvedValue({
+      ...preview,
+      cancellationAllowed: false,
+      reason: "PARTIAL_CANCELLATION_REQUIRED",
+    });
+    renderTickets();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hủy đặt chỗ" }),
+    );
+    expect(
+      await screen.findByText(/chưa hỗ trợ hủy từng phần/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Xác nhận hủy" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps one idempotency key while a cancellation request is pending and reports PENDING accurately", async () => {
+    let resolveCancellation: (
+      value: BookingCancellationResult | PromiseLike<BookingCancellationResult>,
+    ) => void = () => undefined;
+    vi.mocked(cancelBooking).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCancellation = resolve;
+        }),
+    );
+    renderTickets();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hủy đặt chỗ" }),
+    );
+    const confirm = await screen.findByRole("button", {
+      name: "Xác nhận hủy",
+    });
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Đang hủy..." }),
+      ).toBeDisabled(),
+    );
+    expect(cancelBooking).toHaveBeenCalledTimes(1);
+    const firstKey = vi.mocked(cancelBooking).mock.calls[0]![0].idempotencyKey;
+    expect(firstKey).toBeTruthy();
+
+    resolveCancellation({
+      cancellationId: "cancellation-a",
+      bookingId: "booking-a",
+      bookingStatus: "CANCELLED",
+      requestedAt: "2026-10-16T03:00:00.000Z",
+      cancelledAt: "2026-10-16T03:00:00.000Z",
+      originalAmount: "700000",
+      refundAmount: "400000",
+      cancellationFeeAmount: "300000",
+      currency: "VND",
+      policyVersion: 1,
+      reason: "PARTIAL_REFUND",
+      refund: {
+        id: "refund-a",
+        status: "PENDING",
+        kind: "PARTIAL",
+        amount: "400000",
+        currency: "VND",
+      },
+    });
+    expect(
+      await screen.findAllByText(/đã được ghi nhận và đang chờ xử lý/),
+    ).not.toHaveLength(0);
+    expect(screen.queryByText(/đã hoàn tiền/)).toBeNull();
+  });
+
+  it("retries a failed cancellation with the same Idempotency-Key", async () => {
+    vi.mocked(cancelBooking)
+      .mockRejectedValueOnce(new Error("network timeout"))
+      .mockResolvedValueOnce({
+        cancellationId: "cancellation-retry",
+        bookingId: "booking-a",
+        bookingStatus: "CANCELLED",
+        requestedAt: "2026-10-16T03:00:00.000Z",
+        cancelledAt: "2026-10-16T03:00:00.000Z",
+        originalAmount: "700000",
+        refundAmount: "0",
+        cancellationFeeAmount: "700000",
+        currency: "VND",
+        policyVersion: 1,
+        reason: "NO_REFUND",
+        refund: null,
+      });
+    renderTickets();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Hủy đặt chỗ" }),
+    );
+    const confirm = await screen.findByRole("button", {
+      name: "Xác nhận hủy",
+    });
+    fireEvent.click(confirm);
+    await screen.findByText(/Bạn có thể thử lại an toàn/);
+    const firstKey = vi.mocked(cancelBooking).mock.calls[0]![0].idempotencyKey;
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(cancelBooking).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(cancelBooking).mock.calls[1]![0].idempotencyKey).toBe(
+      firstKey,
+    );
   });
 });

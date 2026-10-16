@@ -744,8 +744,14 @@ CONFIRMED → CANCELLED
 Ticket
 ISSUED → VOIDED
 
+Reservation
+CONFIRMED → RELEASED
+
+BookingCancellation
+→ immutable audit record
+
 Refund
-→ PENDING
+→ PENDING when refundAmount > 0
 ```
 
 Sau đó refund được xử lý async.
@@ -1227,10 +1233,11 @@ ISSUED
       └── CHECKED_IN (terminal)
 ```
 
-The transition runs in one PostgreSQL transaction. It locks the Ticket row,
-uses transaction database time, reuses the validation policy, and issues a
-conditional update that still requires `status = ISSUED`. The same transaction
-stores:
+The transition runs in one PostgreSQL transaction. It locks the parent Booking
+and then the Ticket row, uses transaction database time, reuses the validation
+policy, and issues a conditional update that still requires `status = ISSUED`.
+The Booking-first order serializes check-in against whole-Booking cancellation.
+The same transaction stores:
 
 ```text
 checkedInAt       = database NOW()
@@ -1240,3 +1247,60 @@ checkedInByUserId = auth.sub
 Sequential retries and losing concurrent requests return
 `409 ALREADY_CHECKED_IN`; neither may change the original audit values. There
 is no `CHECKED_IN -> ISSUED` transition, re-entry, or undo path in the MVP.
+
+---
+
+# 33. Booking Cancellation Orchestration Update
+
+Customer cancellation supports a whole confirmed Booking only:
+
+```text
+Booking      CONFIRMED -> CANCELLED
+Reservation  CONFIRMED -> RELEASED
+Ticket       ISSUED    -> VOIDED
+Refund       create PENDING when refundAmount > 0
+```
+
+`CHECKED_IN` is terminal and blocks cancellation. Existing `VOIDED` Tickets are
+left unchanged. A confirmed Booking with zero Ticket rows can still be
+cancelled. `Slot.capacity` is unchanged because active capacity is derived from
+Reservation status.
+
+`POST /api/v1/bookings/:bookingId/cancellation/preview` evaluates the immutable
+Booking policy and per-item financial/time snapshots using database time. It is
+read-only and is not a guarantee. `POST /api/v1/bookings/:bookingId/cancel`
+requires a stable `Idempotency-Key` and recalculates after acquiring locks.
+
+The accepted transaction is all-or-nothing:
+
+```text
+lock Booking
+lock Payment
+lock Reservations in id order
+lock Tickets in id order
+read database NOW()
+revalidate ownership, status, snapshots, payment, reservations, tickets
+recalculate item-level policy
+Booking -> CANCELLED
+Reservations -> RELEASED
+ISSUED Tickets -> VOIDED
+create BookingCancellation audit
+create optional Refund PENDING through RefundService
+commit
+```
+
+`PARTIAL_CANCELLATION_REQUIRED` is rejected because item cancellation is not yet
+supported. `CANCELLATION_NOT_ALLOWED`, `POLICY_SNAPSHOT_MISSING`,
+`BOOKING_AMOUNT_MISMATCH`, `INCONSISTENT_PAYMENT_STATE`,
+`INCONSISTENT_RESERVATION_STATE`, and `TICKET_ALREADY_USED` produce no state
+change.
+
+Concurrent cancellations serialize on Booking and return the one persisted
+decision. Check-in uses the same Booking-first order, so the only coherent race
+outcomes are `CONFIRMED + CHECKED_IN` or `CANCELLED + VOIDED`; `CANCELLED +
+CHECKED_IN` cannot commit. Refund reservation remains protected by the Payment
+row lock and `PENDING + SUCCEEDED <= Payment.amount` invariant.
+
+`Refund PENDING` means GoBook recorded the customer's entitlement. Actual SePay
+or bank transfer execution, provider attempts/reconciliation, and customer
+notification occur after commit in a future phase.
