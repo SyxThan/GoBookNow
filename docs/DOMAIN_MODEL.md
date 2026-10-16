@@ -1681,37 +1681,52 @@ Fields:
 ```text
 id UUID PK
 
-booking_id UUID FK NOT NULL
-
 payment_id UUID FK NOT NULL
+
+idempotency_key VARCHAR(128) UNIQUE NOT NULL
+
+status REFUND_STATUS NOT NULL DEFAULT PENDING
+
+kind REFUND_KIND NOT NULL
+
+reason REFUND_REASON NOT NULL
+
+reason_note VARCHAR(500) NULL
 
 amount BIGINT NOT NULL
 
-type REFUND_TYPE NOT NULL
+currency VARCHAR(3) NOT NULL
 
-status REFUND_STATUS NOT NULL
+requested_at TIMESTAMPTZ NOT NULL
 
-reason TEXT NULL
+succeeded_at TIMESTAMPTZ NULL
 
-gateway_ref VARCHAR NULL
+cancelled_at TIMESTAMPTZ NULL
 
-requested_by UUID FK users.id NULL
+created_at TIMESTAMPTZ
 
-processed_at TIMESTAMP NULL
-
-created_at TIMESTAMP
-
-updated_at TIMESTAMP
+updated_at TIMESTAMPTZ
 ```
+
+`Refund` points only to `Payment`; the Booking is reached through
+`Refund → Payment → Booking`. This avoids two competing relationship sources.
+The amount, currency, kind, reason, and idempotency key are immutable financial
+snapshots. `currency` always comes from the Payment snapshot, never from a
+caller.
 
 ---
 
-# 58. Refund Type
+# 58. Refund Kind
 
 ```text
 FULL
 PARTIAL
 ```
+
+`PARTIAL` means the new obligation consumes less than the remaining refundable
+balance at creation time. `FULL` means it consumes all of that remaining
+balance; after an earlier partial refund, a `FULL` record may therefore be less
+than the original Payment amount.
 
 ---
 
@@ -1719,19 +1734,19 @@ PARTIAL
 
 ```text
 PENDING
-PROCESSING
-SUCCESS
-FAILED
+SUCCEEDED
+CANCELLED
 ```
+
+The aggregate is provider-independent. Provider transport failures will belong
+to a future `RefundAttempt`; they do not erase the pending financial obligation
+and are not a `Refund` aggregate status.
 
 ---
 
 # 60. Refund Cardinality
 
 ```text
-Booking 1
- └── N Refunds
-
 Payment 1
  └── N Refunds
 ```
@@ -1749,17 +1764,51 @@ trong tương lai.
 
 ---
 
-# 61. Refund Invariant
+# 61. Refund Invariants and Derived Payment State
 
-Tổng refund thành công:
+Reserved refund amount includes both obligations awaiting execution and settled
+refunds:
 
 ```text
-SUM(successful refunds)
-<=
-Payment.amount
+reservedRefundAmount = SUM(amount WHERE status IN (PENDING, SUCCEEDED))
+reservedRefundAmount <= Payment.amount
+remainingRefundableAmount = Payment.amount - reservedRefundAmount
 ```
 
-Không refund vượt số đã thanh toán.
+`CANCELLED` releases its reservation. Refund creation locks the parent Payment
+row inside the same PostgreSQL transaction, calculates the reserved sum, rejects
+an amount above the remaining balance, derives `PARTIAL`/`FULL`, and inserts the
+new `PENDING` row. The unique idempotency key makes equivalent retries converge;
+reuse for a different payment, amount, or reason is a conflict.
+
+Successful settlement is a separate derived view:
+
+```text
+succeededRefundAmount = SUM(amount WHERE status = SUCCEEDED)
+
+0                                      -> NONE
+0 < succeededRefundAmount < amount     -> PARTIAL
+succeededRefundAmount = Payment.amount -> FULL
+```
+
+This is `PaymentRefundState`, not `PaymentStatus`. The incoming Payment remains
+`SUCCEEDED` after outgoing refunds, preserving the original payment history.
+
+Future provider execution:
+
+```text
+Refund PENDING
+  -> RefundExecutor
+  -> RefundAttempt(provider = SEPAY)
+  -> provider API
+  -> Refund SUCCEEDED
+```
+
+Future whole-Booking cancellation should evaluate the immutable policy, update
+Booking/Reservation/Ticket state, and create the required `Refund PENDING`
+obligation in one database transaction. The Refund service accepts an existing
+transaction client for that orchestration; this task does not implement those
+Booking or Ticket mutations.
 
 ---
 
@@ -2307,7 +2356,6 @@ entity_id = "..."
 | PaymentAttempt | has | WebhookLog | 1:N |
 | Booking | has | Ticket | 1:N |
 | Ticket | has | Checkin | 1:0..1 |
-| Booking | has | Refund | 1:N |
 | Payment | has | Refund | 1:N |
 | Vendor | owns | Voucher | 1:N |
 | Voucher | has | VoucherUsage | 1:N |
