@@ -468,20 +468,22 @@ States:
 
 ```text
 PENDING
-PROCESSING
-SUCCESS
-FAILED
+SUCCEEDED
+CANCELLED
 ```
 
 Flow:
 
 ```text
 PENDING
-   ↓
-PROCESSING
-   ├──→ SUCCESS
-   └──→ FAILED
+   ├──→ SUCCEEDED
+   └──→ CANCELLED
 ```
+
+`SUCCEEDED` and `CANCELLED` are terminal. Repeating the same terminal operation
+is idempotent and does not rewrite `succeededAt` or `cancelledAt`. The forbidden
+transitions are `SUCCEEDED → PENDING/CANCELLED` and
+`CANCELLED → PENDING/SUCCEEDED`.
 
 ---
 
@@ -491,35 +493,49 @@ PROCESSING
 stateDiagram-v2
     [*] --> PENDING
 
-    PENDING --> PROCESSING: Refund worker starts
-
-    PROCESSING --> SUCCESS: Gateway refund success
-    PROCESSING --> FAILED: Gateway refund error
+    PENDING --> SUCCEEDED: Refund execution succeeds
+    PENDING --> CANCELLED: Obligation cancelled before execution
 ```
+
+There is deliberately no aggregate `FAILED` state. A future provider executor
+may record several failed `RefundAttempt` rows while the Refund obligation stays
+`PENDING`, then transition the aggregate to `SUCCEEDED` after a later successful
+attempt.
 
 ---
 
-# 13. Refund Rule quan trọng
+# 13. Refund Reservation and Payment State
 
-Nếu refund:
-
-```text
-FAILED
-```
-
-thì Booking vẫn:
+Both `PENDING` and `SUCCEEDED` reserve the Payment balance:
 
 ```text
-CANCELLED
+SUM(PENDING + SUCCEEDED refunds) <= Payment.amount
 ```
 
-Ticket vẫn:
+`CANCELLED` releases the reservation. Only `SUCCEEDED` contributes to the
+derived `PaymentRefundState`:
 
 ```text
-VOIDED
+NONE | PARTIAL | FULL
 ```
 
-Không restore booking tự động.
+`Payment.status` remains `SUCCEEDED`; it describes the original incoming
+payment, not outgoing refund settlement.
+
+The future orchestration boundary is:
+
+```text
+Customer cancellation request
+  -> load Booking and immutable cancellation policy snapshot
+  -> CancellationPolicyEngine item-level entitlement
+  -> atomic Booking cancellation / Reservation handling / Ticket VOID
+  -> RefundService.createRefundObligation in the same transaction
+  -> Refund PENDING
+  -> future provider executor
+```
+
+The Refund domain itself does not change Booking, Reservation, Ticket, or Slot
+state and does not call SePay.
 
 ---
 
