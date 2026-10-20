@@ -3997,3 +3997,66 @@ or Refund balance failure aborts the whole transaction.
 customer. Provider execution, attempts, reconciliation, notifications, SLAs,
 admin manual workflows, and partial BookingItem cancellation remain future
 work.
+
+## Vendor operations and commission snapshot (MVP)
+
+Each newly created Booking snapshots one explicitly configured
+`PLATFORM_COMMISSION_BPS` (integer 0–10000; set in `apps/backend/.env`, example
+in `.env.example`). Booking Hold calculates this inside the authoritative
+transaction, after voucher validation/allocation and before persistence:
+
+```text
+gross = Booking.subtotalAmount = Σ BookingItem.subtotalAmount
+discount = Booking.voucherDiscountAmount = Σ BookingItem.voucherDiscountAmount
+net = gross - discount = Booking.totalAmount = Payment.amount when created
+platformFee = floor(net × commissionBps / 10000)
+vendorAmount = net - platformFee
+```
+
+Typed nullable `Booking.commissionBps`, `platformFeeAmount`, `vendorAmount` and
+versioned JSON `commissionSnapshot` record the original calculation. Each item
+also stores nullable platform/vendor allocations. The booking fee is calculated
+once, proportionally allocated by item **net** subtotal using integer division,
+and remaining units go by descending fractional remainder then Slot ID. All
+item fees and vendor amounts reconcile exactly to Booking totals. Money in JSON
+snapshots and APIs is a decimal string, not a JavaScript Number or BigInt JSON.
+
+Old Bookings remain null/unknown. The current configured rate is never applied
+retroactively. Payment, cancellation, voucher edits, price edits, and Refund
+transitions do not rewrite original commission. This allocation is an internal
+estimate; Vendor payout/settlement and actual bank transfer are not implemented.
+
+Vendor booking reads require JWT `VENDOR`, an approved and non-deleted Vendor
+profile, and `Booking.vendorId` ownership. Detail returns BookingItem Slot/title
+snapshots and Ticket status counts only; it never returns QR credentials or
+Customer PII. `UPCOMING` means a confirmed Booking has **any** item with
+`slotEndAtSnapshot > database NOW()`. `COMPLETED` means confirmed and **all**
+items have ended. `CANCELLED` overrides those view groups. These are not new
+persistent Booking states. List `from/to` filter `Booking.createdAt`, with
+inclusive start and exclusive end.
+
+Vendor dashboard count metrics use distinct Vendor-owned Bookings created in
+`[from,to)`. Cancellation rate BPS is paid-and-later-cancelled Bookings divided
+by paid Bookings in that created-at cohort; unpaid expired Holds do not count.
+Financial metrics use the cohort of successful Payments whose `succeededAt`
+falls in `[from,to)`. Successful Refunds associated with that cohort are
+subtracted **as of query time**, even when refunded after the selected period.
+This is payment-cohort reporting, not a historical daily bank cash-flow ledger.
+Pending Refunds are a separate liability and are not subtracted from settled
+retained revenue. Cancelled Bookings may retain all, some, or none of their paid
+amount; Booking status alone never determines financial revenue.
+
+For covered paid Bookings, current retained net equals Payment amount minus
+succeeded Refunds. Retained platform fee is `floor(retainedNet × original
+commissionBps / 10000)`; retained Vendor economic share is the difference.
+The original Booking snapshot is unchanged. Unknown legacy commission records
+are excluded from earnings estimates and counted separately; paid revenue still
+includes them. Earnings/commission totals are explicitly incomplete when that
+count is nonzero.
+
+Occupancy uses eligible Vendor Slots with `Slot.startAt` in `[from,to)`:
+`Σ confirmed Reservation.quantity / Σ Slot.capacity`, expressed in BPS.
+`CANCELLED` Slots are excluded; `CLOSED` means sales closed, not event voided,
+so remains eligible. Active HELD quantity requires `expiresAt > database NOW()`
+and is shown separately. Occupancy is booked capacity, not Ticket check-in or
+attendance. All dashboard monetary outputs are decimal strings.

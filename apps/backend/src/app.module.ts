@@ -16,6 +16,7 @@ import { SlotsModule } from './slots/slots.module.js';
 import { TicketsModule } from './tickets/tickets.module.js';
 import { VendorApplicationsModule } from './vendor-applications/vendor-applications.module.js';
 import { VendorsModule } from './vendors/vendors.module.js';
+import { VendorOperationsModule } from './vendor-operations/vendor-operations.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -36,6 +37,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     SlotsModule,
     TicketsModule,
     VendorsModule,
+    VendorOperationsModule,
     VendorApplicationsModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
