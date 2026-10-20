@@ -22,6 +22,7 @@ import {
   type TicketStatus,
 } from "@/lib/api-client";
 import { formatDate, formatMoney, formatTime } from "@/lib/format";
+import { BookingReviewPanel } from "@/components/booking/booking-review-panel";
 
 const ACCESS_TOKEN_KEY = "gobook.accessToken";
 
@@ -79,6 +80,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
       );
     },
     onSuccess: (cancellation) => {
+      void queryClient.invalidateQueries({ queryKey: ["booking-review-eligibility", bookingId] });
       queryClient.setQueryData(
         ["customer-booking-tickets", bookingId],
         (current: typeof ticketQuery.data) =>
@@ -257,6 +259,8 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
             ))}
           </div>
         )}
+
+        <BookingReviewPanel bookingId={bookingId} accessToken={accessToken} onToken={setAccessToken} />
 
         {qrError && !selectedTicket ? (
           <p className="mt-6 text-sm text-rose-300" role="alert">

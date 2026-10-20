@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { BookingStatus, PaymentStatus, Prisma, VendorStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
 import { CommissionCalculator } from '../bookings/commission.calculator.js';
+import { isBookingCompleted } from '../bookings/booking-completion.rules.js';
 import type { VendorBookingsQueryDto, VendorPeriodQueryDto } from './vendor-operations.dto.js';
 
 const listSelect = {
@@ -30,7 +31,8 @@ const detailSelect = {
 export function operationalStatus(booking: { status: BookingStatus; items: readonly { slotEndAtSnapshot: Date }[] }, now: Date) {
   if (booking.status === BookingStatus.CANCELLED) return 'CANCELLED';
   if (booking.status !== BookingStatus.CONFIRMED) return booking.status;
-  return booking.items.some((item) => item.slotEndAtSnapshot > now) ? 'UPCOMING' : 'COMPLETED';
+  if (booking.items.length === 0) return booking.status;
+  return isBookingCompleted(booking, now) ? 'COMPLETED' : 'UPCOMING';
 }
 
 export function parsePeriod(query: VendorPeriodQueryDto, now: Date, useDefault = false) {

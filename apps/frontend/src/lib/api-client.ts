@@ -272,6 +272,22 @@ export type CustomerTicketList = {
   tickets: CustomerTicket[];
 };
 
+export type BookingReview = {
+  id: string;
+  bookingId: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BookingReviewEligibility = {
+  eligible: boolean;
+  reason: "ELIGIBLE" | "REVIEW_BOOKING_NOT_COMPLETED" | "REVIEW_BOOKING_CANCELLED" | "REVIEW_ALREADY_EXISTS";
+  reviewId: string | null;
+  reviewDeleted: boolean;
+};
+
 export type CancellationReason =
   | "FULL_REFUND"
   | "PARTIAL_REFUND"
@@ -396,6 +412,19 @@ export function getPublicService(
     `/services/${encodeURIComponent(slug)}`,
     signal,
   );
+}
+
+export type PublicVendorReviews = {
+  reviewCount: number;
+  averageRating: number | null;
+  ratingDistribution: Record<string, number>;
+  data: { rating: number; comment: string | null; createdAt: string; author: string }[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+};
+
+export function getPublicVendorReviews(vendorId: string, page = 1, signal?: AbortSignal) {
+  return publicGet<PublicVendorReviews>(
+    `/vendors/${encodeURIComponent(vendorId)}/reviews?page=${page}&limit=5`, signal);
 }
 
 export function listPublicSlots(
@@ -588,6 +617,36 @@ export function getBookingTickets(
     accessToken,
     onToken,
   );
+}
+
+export function getBookingReviewEligibility(bookingId: string, accessToken: string | null,
+  onToken: (token: string | null) => void, signal?: AbortSignal): Promise<BookingReviewEligibility> {
+  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}/review/eligibility`,
+    { method: "GET", signal }, accessToken, onToken);
+}
+
+export function getBookingReview(bookingId: string, accessToken: string | null,
+  onToken: (token: string | null) => void, signal?: AbortSignal): Promise<BookingReview> {
+  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}/review`,
+    { method: "GET", signal }, accessToken, onToken);
+}
+
+export function createBookingReview(bookingId: string, input: { rating: number; comment?: string },
+  accessToken: string | null, onToken: (token: string | null) => void): Promise<BookingReview> {
+  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}/review`,
+    { method: "POST", body: JSON.stringify(input) }, accessToken, onToken);
+}
+
+export function updateBookingReview(reviewId: string, input: { rating: number; comment?: string },
+  accessToken: string | null, onToken: (token: string | null) => void): Promise<BookingReview> {
+  return apiRequest(`/reviews/${encodeURIComponent(reviewId)}`,
+    { method: "PATCH", body: JSON.stringify(input) }, accessToken, onToken);
+}
+
+export function deleteBookingReview(reviewId: string, accessToken: string | null,
+  onToken: (token: string | null) => void): Promise<void> {
+  return apiRequest(`/reviews/${encodeURIComponent(reviewId)}`,
+    { method: "DELETE" }, accessToken, onToken);
 }
 
 export function previewBookingCancellation(

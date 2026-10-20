@@ -1341,3 +1341,15 @@ Financial reporting derives retained net from succeeded Payment minus
 **succeeded** Refunds, then applies the original commission BPS to that retained
 net. A pending Refund is a separate obligation and does not represent money
 returned. No Vendor payout state or accounting settlement is implied.
+# Derived Review eligibility and financial investigation views
+
+Review eligibility is not a Booking state transition: `CONFIRMED` plus one or
+more BookingItems whose immutable end snapshots are all at or before database
+`NOW()` yields `COMPLETED` for this purpose. `CANCELLED`, `EXPIRED`, and
+`PENDING_PAYMENT` Bookings cannot be reviewed. Review soft deletion sets
+`deletedAt` and does not release the unique Booking key.
+
+Admin Transaction `refundState` is a view of succeeded Refund amounts only:
+zero is `NONE`, positive below Payment amount is `PARTIAL`, and at least the
+Payment amount is `FULL`. Pending Refunds remain a separate obligation and do
+not mutate Payment status. A failed Attempt does not make a Payment `FAILED`.
