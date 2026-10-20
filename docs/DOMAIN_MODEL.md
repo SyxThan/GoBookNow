@@ -4035,6 +4035,22 @@ items have ended. `CANCELLED` overrides those view groups. These are not new
 persistent Booking states. List `from/to` filter `Booking.createdAt`, with
 inclusive start and exclusive end.
 
+Verified `Review` belongs to exactly one Booking (`bookingId` unique), not to
+BookingItem. Its author and Vendor are derived through the Booking. Eligibility
+requires a customer-owned, `CONFIRMED` Booking with at least one item and every
+immutable `slotEndAtSnapshot <= database NOW()`. Thus live Slot edits do not
+change eligibility. `deletedAt` soft-deletes a Review; the unique booking key
+still prevents another Review for the same Booking. Public Vendor ratings use
+only active Reviews on completed Bookings and count each Review once. Public
+responses omit Customer identity, financial data, and Ticket credentials.
+
+Admin Transactions are a read-only projection of existing `Payment` rows.
+`PaymentAttempt` holds provider references and attempt statuses; `Refund` holds
+independent refund lifecycle. A successful Payment is not re-labelled
+`REFUNDED`: `NONE`/`PARTIAL`/`FULL` derives only from succeeded Refund amounts,
+and pending Refund amounts are reported separately. Monetary API values remain
+decimal strings. See [admin transactions and reviews](./REVIEWS_ADMIN_TRANSACTIONS.md).
+
 Vendor dashboard count metrics use distinct Vendor-owned Bookings created in
 `[from,to)`. Cancellation rate BPS is paid-and-later-cancelled Bookings divided
 by paid Bookings in that created-at cohort; unpaid expired Holds do not count.

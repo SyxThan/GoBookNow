@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { BookingSlotSelector } from "@/components/booking/booking-slot-selector";
 import { QuantitySelector } from "@/components/booking/quantity-selector";
+import { VendorReviews } from "@/components/reviews/vendor-reviews";
 import {
   getPublicService,
   listPublicSlots,
@@ -207,6 +208,7 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
             </aside>
           )}
         </div>
+        <VendorReviews vendorId={service.vendor.id} />
       </div>
 
       {slots.length > 0 && (
