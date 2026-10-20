@@ -50,6 +50,8 @@ describe('Booking expiration worker (e2e, PostgreSQL)', () => {
 
   beforeAll(async () => {
     process.env.BOOKING_HOLD_TTL_MINUTES = '10';
+    // Booking Hold requires an explicit platform rate; CI does not load a dev .env.
+    process.env.PLATFORM_COMMISSION_BPS = '1000';
     process.env.BOOKING_EXPIRATION_INTERVAL_SECONDS = '60';
     process.env.BOOKING_EXPIRATION_BATCH_SIZE = '100';
 
