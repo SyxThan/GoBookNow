@@ -204,7 +204,7 @@ describe('SePay strict payment matching (e2e)', () => {
   const transaction = {
     $queryRaw: vi.fn(() => {
       rawCall += 1;
-      const phase = (rawCall - 1) % 5;
+      const phase = (rawCall - 1) % 6;
       if (phase === 0) {
         return Promise.resolve([{ id: currentAttempt.payment.booking.id }]);
       }
@@ -219,6 +219,7 @@ describe('SePay strict payment matching (e2e)', () => {
           })),
         );
       }
+      if (phase === 4) return Promise.resolve([]); // optional VoucherClaim lock
       return Promise.resolve([{ now: new Date('2026-10-01T00:00:00.000Z') }]);
     }),
     paymentAttempt: {

@@ -49,6 +49,7 @@ function aggregate(
     items: amounts.map((amount, index) => ({
       id: `40000000-0000-4000-8000-00000000000${index + 1}`,
       subtotalAmount: amount,
+      voucherDiscountAmount: 0n,
       slotStartAtSnapshot: new Date(NOW.getTime() + starts[index]! * 60_000),
       reservation: {
         id: `50000000-0000-4000-8000-00000000000${index + 1}`,
@@ -100,6 +101,23 @@ describe('BookingCancellationService preview', () => {
     expect(transaction.$queryRaw).toHaveBeenCalledTimes(1);
     expect(transaction.booking.findUnique).toHaveBeenCalledTimes(1);
     expect(Object.keys(transaction)).toEqual(['booking', '$queryRaw']);
+  });
+
+  it('bases a voucher Booking refund on net item amounts actually paid', async () => {
+    const booking = aggregate();
+    booking.items = booking.items.slice(0, 2);
+    booking.items[0]!.voucherDiscountAmount = 36_000n;
+    booking.items[1]!.voucherDiscountAmount = 24_000n;
+    booking.totalAmount = 440_000n;
+    booking.payment.amount = 440_000n;
+    const { service } = setup(booking);
+    await expect(service.preview(CUSTOMER_ID, BOOKING_ID)).resolves.toEqual(
+      expect.objectContaining({
+        originalAmount: '440000',
+        refundAmount: '352000',
+        cancellationFeeAmount: '88000',
+      }),
+    );
   });
 
   it('rejects legacy data without a cancellation policy snapshot', async () => {

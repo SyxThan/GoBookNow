@@ -52,10 +52,31 @@ export function toFriendlyBookingError(error: unknown): FriendlyBookingError {
       refetchSlots: true,
     };
   }
-  if (error.code === "IDEMPOTENCY_CONFLICT") {
+  if (
+    error.code === "IDEMPOTENCY_CONFLICT" ||
+    error.code === "IDEMPOTENCY_KEY_CONFLICT"
+  ) {
     return {
       kind: "IDEMPOTENCY",
       message: "Yêu cầu đặt chỗ đã thay đổi. Hãy tạo một lần thử mới.",
+      refetchSlots: false,
+    };
+  }
+  const voucherMessages: Record<string, string> = {
+    VOUCHER_NOT_FOUND: "Mã voucher không tồn tại.",
+    VOUCHER_INACTIVE: "Voucher đã bị vô hiệu hóa.",
+    VOUCHER_NOT_STARTED: "Voucher chưa bắt đầu.",
+    VOUCHER_EXPIRED: "Voucher đã hết hạn.",
+    VOUCHER_MIN_ORDER_NOT_MET: "Đơn hàng chưa đạt mức tối thiểu của voucher.",
+    VOUCHER_LIMIT_REACHED: "Voucher đã hết lượt sử dụng.",
+    VOUCHER_NO_DISCOUNT: "Voucher không tạo ra mức giảm giá.",
+    FREE_CHECKOUT_UNSUPPORTED:
+      "Voucher khiến tổng thanh toán bằng 0; hiện chưa hỗ trợ checkout miễn phí.",
+  };
+  if (error.code && voucherMessages[error.code]) {
+    return {
+      kind: "UNKNOWN",
+      message: voucherMessages[error.code],
       refetchSlots: false,
     };
   }

@@ -1,5 +1,21 @@
 # GoBook — State Machine
 
+## VoucherClaim lifecycle (current runtime)
+
+```text
+Booking Hold accepted -> VoucherClaim RESERVED
+  ├─ Payment settled before hold expiry -> REDEEMED
+  └─ Booking hold expired -> RELEASED
+```
+
+REDEEMED and RELEASED are terminal. Settlement locks Booking, Payment,
+PaymentAttempt, Reservations ordered by id, then VoucherClaim, and atomically
+confirms Booking/Reservations and redeems the claim. Duplicate payment events
+see the already redeemed claim without consuming another use. Expiration locks
+Booking first and releases a RESERVED claim in the same transaction as
+Booking/Reservation expiry. Late payments cannot resurrect expired holds.
+Paid cancellation leaves REDEEMED consumed, with no automatic recredit.
+
 > Version: `v1.0.0-MVP`
 > Mục tiêu: Xác định trạng thái và cách chuyển trạng thái của các domain quan trọng trong GoBook.
 
@@ -325,8 +341,8 @@ stateDiagram-v2
 
 Payment success và Booking expiration có thể chạy đồng thời. Cả hai flow lock
 Booking trước. Atomic settlement tiếp tục lock theo thứ tự
-`Booking -> Payment -> PaymentAttempt -> Reservations (ORDER BY id)`, lấy
-database `NOW()`, rồi re-read toàn aggregate trước khi mutate. Expiration dùng
+`Booking -> Payment -> PaymentAttempt -> Reservations (ORDER BY id) -> VoucherClaim`, lấy
+fresh database `clock_timestamp()` sau khi lock, rồi re-read toàn aggregate trước khi mutate. Expiration dùng
 `FOR UPDATE SKIP LOCKED`, vì vậy chỉ một flow có thể thắng trên cùng Booking.
 
 Nếu settlement thắng khi hold còn hạn, Attempt, Payment, Booking và toàn bộ

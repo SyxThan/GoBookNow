@@ -21,9 +21,14 @@ import {
   initiateSePayPayment,
   listPublicSlots,
   login,
+  validateVoucher,
   type BookingHoldResponse,
+  type VoucherQuote,
 } from "@/lib/api-client";
-import { toFriendlyBookingError, type FriendlyBookingError } from "@/lib/booking-errors";
+import {
+  toFriendlyBookingError,
+  type FriendlyBookingError,
+} from "@/lib/booking-errors";
 import {
   clearCheckoutDraft,
   clearHeldBooking,
@@ -43,6 +48,7 @@ import {
 import { toFriendlyPaymentError } from "@/lib/payment-errors";
 import { submitExternalPaymentForm } from "@/lib/payment-form";
 import { isFutureOpenSlot } from "@/lib/slots";
+import { formatMoney } from "@/lib/format";
 
 type CheckoutState =
   | { step: "SUMMARY" }
@@ -55,6 +61,7 @@ type HoldVariables = {
   draft: CheckoutDraft;
   idempotencyKey: string;
   previewUnitPrice: string;
+  voucherCode?: string;
 };
 
 const ACCESS_TOKEN_KEY = "gobook.accessToken";
@@ -69,6 +76,9 @@ export function BookingCheckoutClient() {
   const [state, setState] = useState<CheckoutState>({ step: "SUMMARY" });
   const [accessToken, setAccessTokenState] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucherQuote, setVoucherQuote] = useState<VoucherQuote | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
   const [paymentState, setPaymentState] = useState<CheckoutPaymentState>({
     step: "READY",
   });
@@ -89,6 +99,7 @@ export function BookingCheckoutClient() {
       setAccessTokenState(token);
 
       if (held && (!serviceParam || held.serviceSlug === serviceParam)) {
+        if (held.booking.voucherCode) setVoucherInput(held.booking.voucherCode);
         const expired =
           !held.booking.expiresAt ||
           new Date(held.booking.expiresAt).getTime() <= Date.now();
@@ -98,7 +109,10 @@ export function BookingCheckoutClient() {
             : { step: "HELD", booking: held.booking, priceChanged: false },
         );
       }
-      if (storedDraft && (!serviceParam || storedDraft.serviceSlug === serviceParam)) {
+      if (
+        storedDraft &&
+        (!serviceParam || storedDraft.serviceSlug === serviceParam)
+      ) {
         setDraft(storedDraft);
       }
       setHydrated(true);
@@ -129,6 +143,9 @@ export function BookingCheckoutClient() {
               quantity: variables.draft.quantity,
             },
           ],
+          ...(variables.voucherCode
+            ? { voucherCode: variables.voucherCode }
+            : {}),
         },
         accessToken,
         setAccessToken,
@@ -145,7 +162,8 @@ export function BookingCheckoutClient() {
       const priceChanged =
         booking.items[0]?.unitPriceAmount !== variables.previewUnitPrice;
       const expired =
-        !booking.expiresAt || new Date(booking.expiresAt).getTime() <= Date.now();
+        !booking.expiresAt ||
+        new Date(booking.expiresAt).getTime() <= Date.now();
       setState(
         expired
           ? { step: "EXPIRED", booking }
@@ -165,6 +183,30 @@ export function BookingCheckoutClient() {
         setShowLogin(true);
       }
       setState({ step: "ERROR", error: friendly });
+    },
+  });
+
+  const voucherMutation = useMutation({
+    mutationFn: (code: string) =>
+      validateVoucher(
+        code,
+        [{ slotId: draft!.slotId, quantity: draft!.quantity }],
+        accessToken,
+        setAccessToken,
+      ),
+    retry: false,
+    onSuccess: (quote) => {
+      if (quote.valid) {
+        setVoucherQuote(quote);
+        setVoucherError(null);
+      } else {
+        setVoucherQuote(null);
+        setVoucherError(voucherReason(quote.reason));
+      }
+    },
+    onError: () => {
+      setVoucherQuote(null);
+      setVoucherError("Không thể kiểm tra voucher. Vui lòng thử lại.");
     },
   });
 
@@ -215,25 +257,36 @@ export function BookingCheckoutClient() {
   }, [paymentState]);
 
   const submitHold = () => {
-    if (!draft || !slot || holdMutation.isPending || submitGuard.current) return;
+    if (!draft || !slot || holdMutation.isPending || submitGuard.current)
+      return;
     if (!accessToken) {
       setShowLogin(true);
       return;
     }
-    const attempt = ensureHoldAttempt(draft, window.sessionStorage);
+    if (voucherInput.trim() && !voucherQuote) {
+      setVoucherError(
+        "Hãy áp dụng voucher hợp lệ hoặc xóa mã trước khi giữ chỗ.",
+      );
+      return;
+    }
+    const voucherCode = voucherQuote?.code;
+    const attempt = ensureHoldAttempt(
+      { ...draft, voucherCode },
+      window.sessionStorage,
+    );
     submitGuard.current = true;
     setState({ step: "CREATING_HOLD" });
     holdMutation.mutate({
       draft,
       idempotencyKey: attempt.key,
       previewUnitPrice: slot.price.amount,
+      voucherCode,
     });
   };
 
   const submitPayment = (booking: BookingHoldResponse) => {
     const isExpired =
-      !booking.expiresAt ||
-      new Date(booking.expiresAt).getTime() <= Date.now();
+      !booking.expiresAt || new Date(booking.expiresAt).getTime() <= Date.now();
     if (
       paymentSubmitGuard.current ||
       !canInitiateSePay({
@@ -257,6 +310,8 @@ export function BookingCheckoutClient() {
     setDraft(next);
     saveCheckoutDraft(next, window.sessionStorage);
     replaceHoldAttempt(next, window.sessionStorage);
+    setVoucherQuote(null);
+    setVoucherError(null);
     setState({ step: "SUMMARY" });
   };
 
@@ -273,6 +328,8 @@ export function BookingCheckoutClient() {
     if (!draft) return;
     clearHeldBooking(window.sessionStorage);
     setPaymentState({ step: "READY" });
+    setVoucherQuote(null);
+    setVoucherError(null);
     replaceHoldAttempt(draft, window.sessionStorage);
     void queryClient.invalidateQueries({
       queryKey: ["public-slots", draft.serviceId],
@@ -311,7 +368,10 @@ export function BookingCheckoutClient() {
   if (state.step === "EXPIRED") {
     return (
       <CheckoutShell>
-        <BookingExpiredState onRetry={retryExpired} onChooseAnother={chooseAnother} />
+        <BookingExpiredState
+          onRetry={retryExpired}
+          onChooseAnother={chooseAnother}
+        />
       </CheckoutShell>
     );
   }
@@ -322,12 +382,18 @@ export function BookingCheckoutClient() {
       </CheckoutShell>
     );
   }
-  if (serviceQuery.isPending || slotsQuery.isPending) return <CheckoutLoading />;
+  if (serviceQuery.isPending || slotsQuery.isPending)
+    return <CheckoutLoading />;
   if (serviceQuery.isError || slotsQuery.isError) {
     return (
       <CheckoutShell>
-        <section className="panel mx-auto max-w-xl p-8 text-center" role="alert">
-          <h1 className="text-2xl font-semibold text-white">Không thể tải tóm tắt booking</h1>
+        <section
+          className="panel mx-auto max-w-xl p-8 text-center"
+          role="alert"
+        >
+          <h1 className="text-2xl font-semibold text-white">
+            Không thể tải tóm tắt booking
+          </h1>
           <p className="mt-3 text-sm text-slate-400">
             Vui lòng tải lại dữ liệu trước khi tạo hold.
           </p>
@@ -348,14 +414,21 @@ export function BookingCheckoutClient() {
   if (!serviceQuery.data || !slot || !isFutureOpenSlot(slot)) {
     return (
       <CheckoutShell>
-        <section className="panel mx-auto max-w-xl p-8 text-center" role="alert">
+        <section
+          className="panel mx-auto max-w-xl p-8 text-center"
+          role="alert"
+        >
           <h1 className="text-2xl font-semibold text-white">
             Khung giờ không còn khả dụng
           </h1>
           <p className="mt-3 text-sm text-slate-400">
             Dữ liệu Slot đã thay đổi. Hãy quay lại và chọn một lịch khác.
           </p>
-          <button type="button" className="primary-button mt-6" onClick={chooseAnother}>
+          <button
+            type="button"
+            className="primary-button mt-6"
+            onClick={chooseAnother}
+          >
             Chọn khung giờ khác
           </button>
         </section>
@@ -371,15 +444,25 @@ export function BookingCheckoutClient() {
       <div className="mb-7 flex items-center justify-between gap-4">
         <div>
           <p className="eyebrow">Bước 2 / 2</p>
-          <p className="mt-2 text-sm text-slate-400">Xác nhận trước khi giữ chỗ</p>
+          <p className="mt-2 text-sm text-slate-400">
+            Xác nhận trước khi giữ chỗ
+          </p>
         </div>
-        <button type="button" className="secondary-button" onClick={chooseAnother}>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={chooseAnother}
+        >
           ← Chọn lại Slot
         </button>
       </div>
 
       <div className="grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <BookingSummary service={serviceQuery.data} slot={slot} quantity={draft.quantity} />
+        <BookingSummary
+          service={serviceQuery.data}
+          slot={slot}
+          quantity={draft.quantity}
+        />
 
         <aside className="panel p-5 lg:sticky lg:top-5">
           <QuantitySelector
@@ -389,6 +472,83 @@ export function BookingCheckoutClient() {
             onChange={updateQuantity}
           />
 
+          <div className="mt-5 border-t border-white/10 pt-5">
+            <label htmlFor="voucher-code" className="section-label">
+              Mã voucher
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input
+                id="voucher-code"
+                className="input min-w-0 flex-1"
+                value={voucherInput}
+                disabled={creating}
+                onChange={(event) => {
+                  setVoucherInput(event.target.value);
+                  setVoucherQuote(null);
+                  setVoucherError(null);
+                  clearHoldAttempt(window.sessionStorage);
+                }}
+                placeholder="SALE20"
+              />
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={
+                  creating || voucherMutation.isPending || !voucherInput.trim()
+                }
+                onClick={() => {
+                  if (!accessToken) {
+                    setShowLogin(true);
+                    return;
+                  }
+                  voucherMutation.mutate(voucherInput.trim().toUpperCase());
+                }}
+              >
+                {voucherMutation.isPending ? "Đang kiểm tra…" : "Áp dụng"}
+              </button>
+            </div>
+            {voucherError && (
+              <p className="mt-2 text-sm text-rose-200" role="alert">
+                {voucherError}
+              </p>
+            )}
+            {voucherQuote && (
+              <div className="mt-3 space-y-1 text-sm" role="status">
+                <p className="flex justify-between">
+                  <span>Tạm tính</span>
+                  <span>
+                    {formatMoney(
+                      voucherQuote.grossSubtotalAmount,
+                      slot.price.currency,
+                    )}
+                  </span>
+                </p>
+                <p className="flex justify-between text-teal-200">
+                  <span>Voucher {voucherQuote.code}</span>
+                  <span>
+                    -
+                    {formatMoney(
+                      voucherQuote.discountAmount,
+                      slot.price.currency,
+                    )}
+                  </span>
+                </p>
+                <p className="flex justify-between font-semibold">
+                  <span>Tổng dự kiến</span>
+                  <span>
+                    {formatMoney(
+                      voucherQuote.netTotalAmount,
+                      slot.price.currency,
+                    )}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-400">
+                  Giá và lượt voucher được xác nhận lại khi giữ chỗ.
+                </p>
+              </div>
+            )}
+          </div>
+
           {error && (
             <div
               id="hold-error"
@@ -396,7 +556,8 @@ export function BookingCheckoutClient() {
               role="alert"
             >
               <p className="text-sm text-rose-100">{error.message}</p>
-              {(error.kind === "CAPACITY" || error.kind === "SLOT_UNAVAILABLE") && (
+              {(error.kind === "CAPACITY" ||
+                error.kind === "SLOT_UNAVAILABLE") && (
                 <button
                   type="button"
                   className="mt-3 text-sm font-semibold text-teal-200"
@@ -428,7 +589,8 @@ export function BookingCheckoutClient() {
           ) : (
             <>
               <p className="mt-5 text-xs leading-5 text-slate-500">
-                Khi xác nhận, backend kiểm tra lại tình trạng Slot, sức chứa và giá.
+                Khi xác nhận, backend kiểm tra lại tình trạng Slot, sức chứa và
+                giá.
               </p>
               <button
                 type="button"
@@ -449,6 +611,21 @@ export function BookingCheckoutClient() {
       </div>
     </CheckoutShell>
   );
+}
+
+function voucherReason(reason: string): string {
+  const messages: Record<string, string> = {
+    VOUCHER_NOT_FOUND: "Mã voucher không tồn tại.",
+    VOUCHER_INACTIVE: "Voucher đã bị vô hiệu hóa.",
+    VOUCHER_NOT_STARTED: "Voucher chưa bắt đầu.",
+    VOUCHER_EXPIRED: "Voucher đã hết hạn.",
+    VOUCHER_MIN_ORDER_NOT_MET: "Đơn hàng chưa đạt mức tối thiểu của voucher.",
+    VOUCHER_LIMIT_REACHED: "Voucher đã hết lượt sử dụng.",
+    VOUCHER_NO_DISCOUNT: "Voucher không tạo ra mức giảm giá.",
+    FREE_CHECKOUT_UNSUPPORTED:
+      "Voucher khiến tổng thanh toán bằng 0; hiện chưa hỗ trợ checkout miễn phí.",
+  };
+  return messages[reason] ?? "Voucher không hợp lệ.";
 }
 
 function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
@@ -500,7 +677,11 @@ function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
           {error}
         </p>
       )}
-      <button type="submit" className="primary-button mt-5 w-full" disabled={submitting}>
+      <button
+        type="submit"
+        className="primary-button mt-5 w-full"
+        disabled={submitting}
+      >
         {submitting ? "Đang đăng nhập…" : "Đăng nhập"}
       </button>
     </form>
@@ -540,7 +721,9 @@ function CheckoutLoading() {
 function EmptyCheckout() {
   return (
     <section className="panel mx-auto max-w-xl p-8 text-center">
-      <h1 className="text-2xl font-semibold text-white">Chưa có Slot được chọn</h1>
+      <h1 className="text-2xl font-semibold text-white">
+        Chưa có Slot được chọn
+      </h1>
       <p className="mt-3 text-sm text-slate-400">
         Checkout chỉ bắt đầu sau khi bạn chọn một khung giờ từ trang dịch vụ.
       </p>

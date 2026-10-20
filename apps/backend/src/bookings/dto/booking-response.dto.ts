@@ -47,6 +47,12 @@ export class BookingItemResponseDto {
   @ApiProperty({ example: '300000', description: 'Integer money string' })
   subtotalAmount: string;
 
+  @ApiProperty({ example: '60000' })
+  voucherDiscountAmount: string;
+
+  @ApiProperty({ example: '240000' })
+  netAmount: string;
+
   @ApiProperty({ enum: PricingSource, example: PricingSource.SLOT })
   pricingSource: PricingSource;
 
@@ -72,6 +78,12 @@ export class BookingResponseDto {
 
   @ApiProperty({ example: '300000', description: 'Integer money string' })
   subtotalAmount: string;
+
+  @ApiProperty({ example: '60000' })
+  voucherDiscountAmount: string;
+
+  @ApiPropertyOptional({ nullable: true, example: 'SALE20' })
+  voucherCode: string | null;
 
   @ApiProperty({ example: '300000', description: 'Integer money string' })
   totalAmount: string;

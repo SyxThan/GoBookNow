@@ -8,6 +8,7 @@ import {
   initiateSePayPayment,
   previewBookingCancellation,
   validateVendorTicket,
+  validateVoucher,
 } from "./api-client";
 
 describe("createBookingHold", () => {
@@ -51,6 +52,65 @@ describe("createBookingHold", () => {
     });
     expect(String(init.body)).not.toContain("customerId");
     expect(String(init.body)).not.toContain("price");
+  });
+
+  it("includes voucherCode without client financial amounts", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ id: "booking-a" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await createBookingHold(
+      {
+        idempotencyKey: "safe-key",
+        items: [{ slotId: "slot-a", quantity: 2 }],
+        voucherCode: "SALE20",
+      },
+      "access-token",
+      vi.fn(),
+    );
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      items: [{ slotId: "slot-a", quantity: 2 }],
+      voucherCode: "SALE20",
+    });
+    expect(String(init.body)).not.toContain("discountAmount");
+  });
+});
+
+describe("validateVoucher", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("submits only code and selected items for a read-only quote", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            valid: true,
+            code: "SALE20",
+            discountAmount: "40000",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await validateVoucher(
+      "SALE20",
+      [{ slotId: "slot-a", quantity: 2 }],
+      "access-token",
+      vi.fn(),
+    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/api/v1/vouchers/validate");
+    expect(JSON.parse(String(init.body))).toEqual({
+      code: "SALE20",
+      items: [{ slotId: "slot-a", quantity: 2 }],
+    });
   });
 });
 
@@ -109,9 +169,7 @@ describe("Booking cancellation API", () => {
       vi.fn(),
     );
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(new Headers(init.headers).get("Idempotency-Key")).toBe(
-      "cancel-key",
-    );
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("cancel-key");
     expect(JSON.parse(String(init.body))).toEqual({
       reasonNote: "Đổi kế hoạch",
     });

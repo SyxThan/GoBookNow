@@ -5,10 +5,14 @@ import {
   ArrayMinSize,
   IsInt,
   IsUUID,
+  IsOptional,
+  IsString,
+  Matches,
   Max,
   Min,
   ValidateNested,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export const MAX_BOOKING_HOLD_ITEMS = 10;
 export const MAX_BOOKING_HOLD_QUANTITY = 1_000;
@@ -31,6 +35,19 @@ export class CreateBookingHoldItemDto {
 }
 
 export class CreateBookingHoldDto {
+  @ApiProperty({
+    required: false,
+    example: 'SALE20',
+    description: 'Optional voucher applied before hold creation.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsString()
+  @Matches(/^[A-Z0-9][A-Z0-9_-]{1,31}$/)
+  voucherCode?: string;
+
   @ApiProperty({
     type: [CreateBookingHoldItemDto],
     minItems: 1,

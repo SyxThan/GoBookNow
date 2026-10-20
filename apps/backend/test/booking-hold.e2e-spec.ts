@@ -12,18 +12,22 @@ import {
 import { AuthModule } from '../src/auth/auth.module.js';
 import type { JwtPayload } from '../src/auth/types/jwt-payload.type.js';
 import { BookingsModule } from '../src/bookings/bookings.module.js';
+import { BookingExpirationService } from '../src/bookings/expiration/booking-expiration.service.js';
+import { PaymentSettlementService } from '../src/payments/payment-settlement.service.js';
 import { PrismaModule } from '../src/database/prisma/prisma.module.js';
 import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import {
   BookingStatus,
   CategoryScope,
   PricingSource,
+  PaymentProvider,
   ReservationStatus,
   ServiceKind,
   ServiceStatus,
   SlotStatus,
   UserStatus,
   VendorStatus,
+  VoucherType,
 } from '../src/generated/prisma/client.js';
 import { ensureSystemRoles } from './helpers/system-roles.js';
 
@@ -33,12 +37,14 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let jwt: JwtService;
+  let expiration: BookingExpirationService;
   const run = randomUUID().slice(0, 8);
   const userIds: string[] = [];
   const vendorIds: string[] = [];
   const categoryIds: string[] = [];
   const serviceIds: string[] = [];
   const slotIds: string[] = [];
+  const voucherIds: string[] = [];
   let customerA: Identity;
   let customerB: Identity;
   let customerC: Identity;
@@ -70,6 +76,7 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
     await app.init();
     prisma = fixture.get(PrismaService);
     jwt = fixture.get(JwtService);
+    expiration = fixture.get(BookingExpirationService);
 
     await ensureSystemRoles(prisma);
 
@@ -90,6 +97,15 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.paymentAttempt.deleteMany({
+        where: { payment: { booking: { customerId: { in: userIds } } } },
+      });
+      await prisma.payment.deleteMany({
+        where: { booking: { customerId: { in: userIds } } },
+      });
+      await prisma.voucherClaim.deleteMany({
+        where: { voucherId: { in: voucherIds } },
+      });
       await prisma.booking.deleteMany({
         where: { customerId: { in: userIds } },
       });
@@ -98,6 +114,7 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
       await prisma.category.deleteMany({ where: { id: { in: categoryIds } } });
       await prisma.vendor.deleteMany({ where: { id: { in: vendorIds } } });
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+      await prisma.voucher.deleteMany({ where: { id: { in: voucherIds } } });
     }
     await app?.close();
   });
@@ -237,6 +254,427 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
     if (idempotencyKey !== null) agent.set('Idempotency-Key', idempotencyKey);
     return agent.auth(token(identity), { type: 'bearer' }).send(body);
   }
+
+  async function voucher(
+    usageLimit: number,
+    options: {
+      type?: VoucherType;
+      fixedAmount?: bigint;
+      percentageBps?: number;
+      maxDiscountAmount?: bigint;
+    } = {},
+  ) {
+    const type = options.type ?? VoucherType.FIXED;
+    const created = await prisma.voucher.create({
+      data: {
+        code: `TEST${run.toUpperCase()}${randomUUID().slice(0, 8).toUpperCase()}`,
+        type,
+        fixedAmount:
+          type === VoucherType.FIXED ? (options.fixedAmount ?? 10000n) : null,
+        percentageBps:
+          type === VoucherType.PERCENTAGE
+            ? (options.percentageBps ?? 2000)
+            : null,
+        minOrderAmount: 0n,
+        maxDiscountAmount: options.maxDiscountAmount ?? null,
+        validFrom: new Date(Date.now() - 60_000),
+        validUntil: new Date(Date.now() + 86_400_000),
+        usageLimit,
+      },
+    });
+    voucherIds.push(created.id);
+    return created;
+  }
+
+  it('quotes trusted multi-item prices and allocates a voucher without claiming during preview', async () => {
+    const first = await createSlot({ priceAmount: 300000n });
+    const second = await createSlot({ priceAmount: 200000n });
+    const discount = await voucher(2, {
+      type: VoucherType.PERCENTAGE,
+      percentageBps: 2000,
+      maxDiscountAmount: 60000n,
+    });
+    const body = {
+      code: discount.code.toLowerCase(),
+      items: [
+        { slotId: first, quantity: 1 },
+        { slotId: second, quantity: 1 },
+      ],
+    };
+    const preview = await request(app.getHttpServer())
+      .post('/api/v1/vouchers/validate')
+      .auth(token(customerA), { type: 'bearer' })
+      .send(body)
+      .expect(200);
+    expect(preview.body).toMatchObject({
+      valid: true,
+      grossSubtotalAmount: '500000',
+      discountAmount: '60000',
+      netTotalAmount: '440000',
+    });
+    expect(
+      await prisma.voucherClaim.count({ where: { voucherId: discount.id } }),
+    ).toBe(0);
+    const held = await hold(customerA, {
+      items: body.items,
+      voucherCode: discount.code,
+    }).expect(201);
+    expect(held.body).toMatchObject({
+      subtotalAmount: '500000',
+      voucherDiscountAmount: '60000',
+      totalAmount: '440000',
+    });
+    expect(
+      held.body.items
+        .map((item: { netAmount: string }) => item.netAmount)
+        .sort(),
+    ).toEqual(['176000', '264000']);
+    expect(
+      await prisma.voucherClaim.count({
+        where: { voucherId: discount.id, status: 'RESERVED' },
+      }),
+    ).toBe(1);
+  });
+
+  it('serializes competing claims for the last voucher usage', async () => {
+    const slotA = await createSlot({ capacity: 10 });
+    const otherService = await createService({
+      vendorId,
+      categoryId,
+      status: ServiceStatus.PUBLISHED,
+      suffix: 'voucher-last',
+      priceAmount: 150_000n,
+    });
+    const slotB = await createSlot({ service: otherService, capacity: 10 });
+    const discount = await voucher(1);
+    const results = await Promise.all([
+      hold(customerA, {
+        items: [{ slotId: slotA, quantity: 1 }],
+        voucherCode: discount.code,
+      }),
+      hold(customerB, {
+        items: [{ slotId: slotB, quantity: 1 }],
+        voucherCode: discount.code,
+      }),
+    ]);
+    expect(
+      results.map((result) => result.status).sort((a, b) => a - b),
+    ).toEqual([201, 409]);
+    expect(results.find((result) => result.status === 409)?.body.code).toBe(
+      'VOUCHER_LIMIT_REACHED',
+    );
+    expect(
+      await prisma.voucherClaim.count({
+        where: { voucherId: discount.id, status: 'RESERVED' },
+      }),
+    ).toBe(1);
+  });
+
+  it('caps twenty concurrent customers at five claims', async () => {
+    const slots = await Promise.all(
+      Array.from({ length: 20 }, async (_, index) => {
+        const service = await createService({
+          vendorId,
+          categoryId,
+          status: ServiceStatus.PUBLISHED,
+          suffix: `voucher-race-${index}`,
+          priceAmount: 150_000n,
+        });
+        return createSlot({ service, day: index + 1, capacity: 1 });
+      }),
+    );
+    const discount = await voucher(5);
+    const customers = await Promise.all(
+      Array.from({ length: 20 }, () => createIdentity([RoleCode.CUSTOMER])),
+    );
+    const results = await Promise.all(
+      customers.map((customer, index) =>
+        hold(customer, {
+          items: [{ slotId: slots[index]!, quantity: 1 }],
+          voucherCode: discount.code,
+        }),
+      ),
+    );
+    expect(results.filter((result) => result.status === 201)).toHaveLength(5);
+    expect(results.filter((result) => result.status === 409)).toHaveLength(15);
+    expect(
+      await prisma.voucherClaim.count({
+        where: { voucherId: discount.id, status: 'RESERVED' },
+      }),
+    ).toBe(5);
+  }, 120_000);
+
+  it('makes simultaneous same-key retries a single financial claim', async () => {
+    const slotId = await createSlot({ capacity: 10 });
+    const discount = await voucher(1);
+    const key = randomUUID();
+    const body = {
+      items: [{ slotId, quantity: 1 }],
+      voucherCode: discount.code,
+    };
+    const results = await Promise.all([
+      hold(customerA, body, key),
+      hold(customerA, body, key),
+    ]);
+    expect(
+      results.map((result) => result.status).sort((a, b) => a - b),
+    ).toEqual([200, 201]);
+    expect(results[0]?.body.id).toBe(results[1]?.body.id);
+    expect(
+      await prisma.voucherClaim.count({ where: { voucherId: discount.id } }),
+    ).toBe(1);
+    await hold(customerA, { items: body.items }, key)
+      .expect(409)
+      .expect(({ body: error }) =>
+        expect(error.code).toBe('IDEMPOTENCY_KEY_CONFLICT'),
+      );
+  });
+
+  it('redeems with payment atomically and keeps duplicate settlement idempotent', async () => {
+    const slotId = await createSlot({ capacity: 10 });
+    const discount = await voucher(1);
+    const held = await hold(customerA, {
+      items: [{ slotId, quantity: 1 }],
+      voucherCode: discount.code,
+    }).expect(201);
+    const bookingId = held.body.id as string;
+    const amount = BigInt(held.body.totalAmount as string);
+    const payment = await prisma.payment.create({
+      data: { bookingId, amount, currency: 'VND' },
+    });
+    const attempt = await prisma.paymentAttempt.create({
+      data: {
+        paymentId: payment.id,
+        provider: PaymentProvider.SEPAY,
+        amount,
+        currency: 'VND',
+        merchantReference: `VOUCHER-${randomUUID()}`,
+        expiresAt: new Date(Date.now() + 600_000),
+      },
+    });
+    const settlement = new PaymentSettlementService(prisma);
+    const input = {
+      attemptId: attempt.id,
+      paymentId: payment.id,
+      bookingId,
+      provider: PaymentProvider.SEPAY,
+      providerTransactionId: `TX-${randomUUID()}`,
+      amount,
+      currency: 'VND',
+    };
+    expect((await settlement.settle(input)).outcome).toBe('CONFIRMED');
+    expect((await settlement.settle(input)).outcome).toBe('ALREADY_CONFIRMED');
+    const final = await prisma.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: {
+        voucherClaim: true,
+        items: { include: { reservation: true } },
+        payment: { include: { attempts: true } },
+      },
+    });
+    expect(final.status).toBe(BookingStatus.CONFIRMED);
+    expect(final.voucherClaim?.status).toBe('REDEEMED');
+    expect(
+      final.items.every(
+        (item) => item.reservation?.status === ReservationStatus.CONFIRMED,
+      ),
+    ).toBe(true);
+    expect(final.payment?.amount).toBe(amount);
+    expect(final.payment?.attempts[0]?.amount).toBe(amount);
+  });
+
+  it('ignores expired RESERVED usage before worker release and blocks late redemption', async () => {
+    const firstSlot = await createSlot({ capacity: 10 });
+    const secondSlot = await createSlot({ capacity: 10 });
+    const discount = await voucher(1);
+    const first = await hold(customerA, {
+      items: [{ slotId: firstSlot, quantity: 1 }],
+      voucherCode: discount.code,
+    }).expect(201);
+    const firstId = first.body.id as string;
+    const past = new Date(Date.now() - 60_000);
+    await prisma.booking.update({
+      where: { id: firstId },
+      data: { expiresAt: past },
+    });
+    await prisma.reservation.updateMany({
+      where: { bookingItem: { bookingId: firstId } },
+      data: { expiresAt: past },
+    });
+    await prisma.voucherClaim.update({
+      where: { bookingId: firstId },
+      data: { expiresAt: past },
+    });
+    const second = await hold(customerB, {
+      items: [{ slotId: secondSlot, quantity: 1 }],
+      voucherCode: discount.code,
+    }).expect(201);
+    expect(second.body.id).not.toBe(firstId);
+    await expiration.sweepExpiredBookings({ batchSize: 100 });
+    const expired = await prisma.booking.findUniqueOrThrow({
+      where: { id: firstId },
+      include: {
+        voucherClaim: true,
+        items: { include: { reservation: true } },
+      },
+    });
+    expect(expired.status).toBe(BookingStatus.EXPIRED);
+    expect(expired.voucherClaim?.status).toBe('RELEASED');
+    expect(
+      expired.items.every(
+        (item) => item.reservation?.status === ReservationStatus.EXPIRED,
+      ),
+    ).toBe(true);
+    expect(
+      await prisma.voucherClaim.count({
+        where: { voucherId: discount.id, status: 'RESERVED' },
+      }),
+    ).toBe(1);
+  });
+
+  it('restricts voucher CRUD to ADMIN and safely deactivates without repricing a held snapshot', async () => {
+    const admin = await createIdentity([RoleCode.ADMIN]);
+    const code = `ADMIN${run.toUpperCase()}`;
+    const dto = {
+      code: code.toLowerCase(),
+      type: 'FIXED',
+      fixedAmount: '10000',
+      minOrderAmount: '0',
+      validFrom: new Date(Date.now() - 60_000).toISOString(),
+      validUntil: new Date(Date.now() + 86_400_000).toISOString(),
+      usageLimit: 2,
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/admin/vouchers')
+      .auth(token(customerA), { type: 'bearer' })
+      .send(dto)
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/api/v1/admin/vouchers')
+      .auth(token(vendorUser), { type: 'bearer' })
+      .send(dto)
+      .expect(403);
+    const created = await request(app.getHttpServer())
+      .post('/api/v1/admin/vouchers')
+      .auth(token(admin), { type: 'bearer' })
+      .send(dto)
+      .expect(201);
+    voucherIds.push(created.body.id as string);
+    expect(created.body.code).toBe(code);
+    await request(app.getHttpServer())
+      .post('/api/v1/admin/vouchers')
+      .auth(token(admin), { type: 'bearer' })
+      .send({ ...dto, code })
+      .expect(409);
+    const slotId = await createSlot({ capacity: 10 });
+    const held = await hold(customerA, {
+      items: [{ slotId, quantity: 1 }],
+      voucherCode: code,
+    }).expect(201);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/vouchers/${created.body.id as string}`)
+      .auth(token(admin), { type: 'bearer' })
+      .send({ fixedAmount: '20000' })
+      .expect(200);
+    const replay = await hold(
+      customerA,
+      { items: [{ slotId, quantity: 1 }], voucherCode: code },
+      (
+        await prisma.booking.findUniqueOrThrow({
+          where: { id: held.body.id as string },
+        })
+      ).idempotencyKey!,
+    ).expect(200);
+    expect(replay.body.totalAmount).toBe(held.body.totalAmount);
+    await hold(customerB, {
+      items: [{ slotId, quantity: 1 }],
+      voucherCode: code,
+    }).expect(201);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/vouchers/${created.body.id as string}`)
+      .auth(token(admin), { type: 'bearer' })
+      .send({ usageLimit: 1 })
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body.code).toBe('VOUCHER_LIMIT_BELOW_USAGE'),
+      );
+    const deactivated = await request(app.getHttpServer())
+      .delete(`/api/v1/admin/vouchers/${created.body.id as string}`)
+      .auth(token(admin), { type: 'bearer' })
+      .expect(200);
+    expect(deactivated.body.isActive).toBe(false);
+    await hold(customerC, {
+      items: [{ slotId, quantity: 1 }],
+      voucherCode: code,
+    })
+      .expect(409)
+      .expect(({ body }) => expect(body.code).toBe('VOUCHER_INACTIVE'));
+  });
+
+  it('keeps Booking, Reservations, and VoucherClaim coherent when late settlement races expiration', async () => {
+    const slotId = await createSlot({ capacity: 10 });
+    const discount = await voucher(1);
+    const held = await hold(customerA, {
+      items: [{ slotId, quantity: 1 }],
+      voucherCode: discount.code,
+    }).expect(201);
+    const bookingId = held.body.id as string;
+    const amount = BigInt(held.body.totalAmount as string);
+    const payment = await prisma.payment.create({
+      data: { bookingId, amount, currency: 'VND' },
+    });
+    const attempt = await prisma.paymentAttempt.create({
+      data: {
+        paymentId: payment.id,
+        provider: PaymentProvider.SEPAY,
+        amount,
+        currency: 'VND',
+        merchantReference: `VOUCHER-${randomUUID()}`,
+        expiresAt: new Date(Date.now() + 600_000),
+      },
+    });
+    const past = new Date(Date.now() - 60_000);
+    await prisma.booking.update({
+      where: { id: bookingId },
+      data: { expiresAt: past },
+    });
+    await prisma.reservation.updateMany({
+      where: { bookingItem: { bookingId } },
+      data: { expiresAt: past },
+    });
+    await prisma.voucherClaim.update({
+      where: { bookingId },
+      data: { expiresAt: past },
+    });
+    const settlement = new PaymentSettlementService(prisma);
+    const [result] = await Promise.all([
+      settlement.settle({
+        attemptId: attempt.id,
+        paymentId: payment.id,
+        bookingId,
+        provider: PaymentProvider.SEPAY,
+        providerTransactionId: `TX-${randomUUID()}`,
+        amount,
+        currency: 'VND',
+      }),
+      expiration.sweepExpiredBookings({ batchSize: 100 }),
+    ]);
+    expect(result.outcome).toBe('RECONCILIATION_REQUIRED');
+    const final = await prisma.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: {
+        voucherClaim: true,
+        items: { include: { reservation: true } },
+      },
+    });
+    expect(final.status).toBe(BookingStatus.EXPIRED);
+    expect(final.voucherClaim?.status).toBe('RELEASED');
+    expect(
+      final.items.every(
+        (item) => item.reservation?.status === ReservationStatus.EXPIRED,
+      ),
+    ).toBe(true);
+  });
 
   async function createExistingReservation(input: {
     slotId: string;

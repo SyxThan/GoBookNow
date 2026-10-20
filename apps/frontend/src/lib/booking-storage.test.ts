@@ -56,6 +56,21 @@ describe("booking hold idempotency lifecycle", () => {
     ).toBe("key-3");
   });
 
+  it("uses a new key when the selected voucher changes", () => {
+    const first = ensureHoldAttempt(
+      { slotId: "slot-a", quantity: 1, voucherCode: "SALE20" },
+      window.sessionStorage,
+      () => "key-1",
+    );
+    const second = ensureHoldAttempt(
+      { slotId: "slot-a", quantity: 1, voucherCode: "OTHER" },
+      window.sessionStorage,
+      () => "key-2",
+    );
+    expect(first.key).toBe("key-1");
+    expect(second.key).toBe("key-2");
+  });
+
   it("uses a new key for deliberate retry after expiration", () => {
     replaceHoldAttempt(
       { slotId: "slot-a", quantity: 1 },
