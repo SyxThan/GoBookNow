@@ -1320,3 +1320,24 @@ row lock and `PENDING + SUCCEEDED <= Payment.amount` invariant.
 `Refund PENDING` means GoBook recorded the customer's entitlement. Actual SePay
 or bank transfer execution, provider attempts/reconciliation, and customer
 notification occur after commit in a future phase.
+
+---
+
+# 34. Commission and Vendor Operational Views
+
+Commission is created once as a versioned Booking snapshot during the Booking
+Hold transaction. Neither `CONFIRMED`, `CANCELLED`, Payment success, nor Refund
+success is a transition of that snapshot. Its rate is the explicitly configured
+platform BPS at creation; gross less voucher discount is the net fee basis.
+Item-level fee allocation reconciles to the Booking-level fee.
+
+`UPCOMING` and `COMPLETED` are **read-only derived views**, not BookingStatus
+transitions. A confirmed Booking is Upcoming if at least one item's immutable
+Slot end is after database `NOW()`; otherwise it is Completed. A cancelled
+Booking stays in Cancelled regardless of Slot times. Pending/expired Holds stay
+outside confirmed operational groups.
+
+Financial reporting derives retained net from succeeded Payment minus
+**succeeded** Refunds, then applies the original commission BPS to that retained
+net. A pending Refund is a separate obligation and does not represent money
+returned. No Vendor payout state or accounting settlement is implied.

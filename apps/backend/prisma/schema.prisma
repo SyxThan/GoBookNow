@@ -527,9 +527,13 @@ model Booking {
 
   currency String @default("VND") @db.VarChar(3)
 
-  subtotalAmount        BigInt @map("subtotal_amount") @db.BigInt
-  voucherDiscountAmount BigInt @default(0) @map("voucher_discount_amount") @db.BigInt
-  totalAmount           BigInt @map("total_amount") @db.BigInt
+  subtotalAmount        BigInt  @map("subtotal_amount") @db.BigInt
+  voucherDiscountAmount BigInt  @default(0) @map("voucher_discount_amount") @db.BigInt
+  totalAmount           BigInt  @map("total_amount") @db.BigInt
+  commissionBps         Int?    @map("commission_bps")
+  platformFeeAmount     BigInt? @map("platform_fee_amount") @db.BigInt
+  vendorAmount          BigInt? @map("vendor_amount") @db.BigInt
+  commissionSnapshot    Json?   @map("commission_snapshot")
 
   voucherId       String? @map("voucher_id") @db.Uuid
   voucherSnapshot Json?   @map("voucher_snapshot")
@@ -574,9 +578,11 @@ model BookingItem {
 
   quantity Int
 
-  unitPriceAmount       BigInt @map("unit_price_amount") @db.BigInt
-  subtotalAmount        BigInt @map("subtotal_amount") @db.BigInt
-  voucherDiscountAmount BigInt @default(0) @map("voucher_discount_amount") @db.BigInt
+  unitPriceAmount       BigInt  @map("unit_price_amount") @db.BigInt
+  subtotalAmount        BigInt  @map("subtotal_amount") @db.BigInt
+  voucherDiscountAmount BigInt  @default(0) @map("voucher_discount_amount") @db.BigInt
+  platformFeeAmount     BigInt? @map("platform_fee_amount") @db.BigInt
+  vendorAmount          BigInt? @map("vendor_amount") @db.BigInt
 
   currency String @default("VND") @db.VarChar(3)
 
@@ -682,6 +688,7 @@ model Payment {
   refunds  Refund[]
 
   @@index([status])
+  @@index([status, succeededAt])
   @@index([createdAt])
   @@map("payments")
 }

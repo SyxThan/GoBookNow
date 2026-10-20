@@ -55,6 +55,7 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
 
   beforeAll(async () => {
     process.env.BOOKING_HOLD_TTL_MINUTES = '10';
+    process.env.PLATFORM_COMMISSION_BPS = '1000';
 
     const fixture = await Test.createTestingModule({
       imports: [
@@ -329,11 +330,40 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
         .map((item: { netAmount: string }) => item.netAmount)
         .sort(),
     ).toEqual(['176000', '264000']);
+    const commissionBooking = await prisma.booking.findUniqueOrThrow({
+      where: { id: held.body.id as string }, include: { items: true },
+    });
+    expect(commissionBooking.commissionBps).toBe(1000);
+    expect(commissionBooking.platformFeeAmount).toBe(44_000n);
+    expect(commissionBooking.vendorAmount).toBe(396_000n);
+    expect(commissionBooking.items.reduce((sum, item) => sum + (item.platformFeeAmount ?? 0n), 0n)).toBe(44_000n);
+    expect(commissionBooking.items.reduce((sum, item) => sum + (item.vendorAmount ?? 0n), 0n)).toBe(396_000n);
+    expect(commissionBooking.commissionSnapshot).toMatchObject({ version: 1, basis: 'NET_AFTER_DISCOUNT', netAmount: '440000' });
     expect(
       await prisma.voucherClaim.count({
         where: { voucherId: discount.id, status: 'RESERVED' },
       }),
     ).toBe(1);
+  });
+
+  it('keeps an old snapshot when the configured rate changes', async () => {
+    const firstSlot = await createSlot({});
+    const first = await hold(customerA, { items: [{ slotId: firstSlot, quantity: 1 }] }).expect(201);
+    process.env.PLATFORM_COMMISSION_BPS = '1500';
+    try {
+      const secondSlot = await createSlot({});
+      const second = await hold(customerA, { items: [{ slotId: secondSlot, quantity: 1 }] }).expect(201);
+      const [firstBooking, secondBooking] = await Promise.all([
+        prisma.booking.findUniqueOrThrow({ where: { id: first.body.id as string } }),
+        prisma.booking.findUniqueOrThrow({ where: { id: second.body.id as string } }),
+      ]);
+      expect(firstBooking.commissionBps).toBe(1000);
+      expect(firstBooking.platformFeeAmount).toBe(15_000n);
+      expect(secondBooking.commissionBps).toBe(1500);
+      expect(secondBooking.platformFeeAmount).toBe(22_500n);
+    } finally {
+      process.env.PLATFORM_COMMISSION_BPS = '1000';
+    }
   });
 
   it('serializes competing claims for the last voucher usage', async () => {

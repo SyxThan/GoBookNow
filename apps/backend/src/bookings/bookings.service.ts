@@ -29,6 +29,7 @@ import type { CreateBookingHoldDto } from './dto/create-booking-hold.dto.js';
 import { allocateVoucherDiscount } from '../vouchers/voucher-discount.engine.js';
 import { VouchersService } from '../vouchers/vouchers.service.js';
 import type { ValidateVoucherDto } from '../vouchers/dto/voucher.dto.js';
+import { CommissionCalculator } from './commission.calculator.js';
 
 const BOOKING_CODE_MAX_ATTEMPTS = 5;
 const HOLD_TTL_MINUTES_MIN = 1;
@@ -264,6 +265,21 @@ export class BookingsService {
     ) {
       throw new Error('VOUCHER_FINANCIAL_MISMATCH');
     }
+    const commission = CommissionCalculator.calculate({
+      grossAmount: subtotalAmount,
+      discountAmount: voucherDiscountAmount,
+      commissionBps: CommissionCalculator.parseBps(
+        this.config.get<string>('PLATFORM_COMMISSION_BPS'),
+      ),
+    });
+    const itemCommissions = CommissionCalculator.allocate(
+      allocations.map((item) => ({ key: item.key, netAmount: item.netAmount })),
+      commission.platformFeeAmount,
+    );
+    if (
+      commission.netAmount !== totalAmount ||
+      itemCommissions.reduce((sum, item) => sum + item.vendorAmount, 0n) !== commission.vendorAmount
+    ) throw new Error('COMMISSION_FINANCIAL_MISMATCH');
     const cancellationPolicySnapshot =
       this.cancellationPolicies.createBookingSnapshot();
 
@@ -277,6 +293,19 @@ export class BookingsService {
         subtotalAmount,
         voucherDiscountAmount,
         totalAmount,
+        commissionBps: commission.commissionBps,
+        platformFeeAmount: commission.platformFeeAmount,
+        vendorAmount: commission.vendorAmount,
+        commissionSnapshot: {
+          version: 1,
+          basis: 'NET_AFTER_DISCOUNT',
+          commissionBps: commission.commissionBps,
+          grossAmount: commission.grossAmount.toString(),
+          discountAmount: commission.discountAmount.toString(),
+          netAmount: commission.netAmount.toString(),
+          platformFeeAmount: commission.platformFeeAmount.toString(),
+          vendorAmount: commission.vendorAmount.toString(),
+        },
         ...(voucherApplication
           ? {
               voucherId: voucherApplication.voucher.id,
@@ -307,6 +336,8 @@ export class BookingsService {
             unitPriceAmount: snapshot.unitPriceAmount,
             subtotalAmount: snapshot.subtotalAmount,
             voucherDiscountAmount: allocations[index]!.discountAmount,
+            platformFeeAmount: itemCommissions[index]!.platformFeeAmount,
+            vendorAmount: itemCommissions[index]!.vendorAmount,
             currency: snapshot.currency,
             pricingSource: snapshot.pricingSource,
             serviceTitleSnapshot: slot.service.title,
