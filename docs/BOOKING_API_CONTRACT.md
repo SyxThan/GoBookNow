@@ -1,5 +1,27 @@
 # GoBook Booking API Contract
 
+## Voucher extension (current runtime)
+
+`POST /api/v1/vouchers/validate` is an authenticated CUSTOMER quote endpoint.
+It accepts `{ "code": "SALE20", "items": [{ "slotId": "uuid", "quantity": 2 }] }`,
+derives gross pricing from current Slot/Service data, and returns `valid`,
+`reason`, `code`, `grossSubtotalAmount`, `discountAmount`, and `netTotalAmount`
+as integer money strings. It does not reserve usage; the hold revalidates.
+
+`POST /api/v1/bookings/hold` accepts optional `voucherCode`. It normalizes
+the code, locks the Voucher row after Slot/Service locks, checks effective
+usage using fresh database time (`clock_timestamp()` after the lock), and creates Booking plus `VoucherClaim RESERVED`
+in the same transaction. A reused Idempotency-Key with different items,
+quantity, or voucher returns `IDEMPOTENCY_KEY_CONFLICT`. A failed claim never
+silently creates a full-price Booking. `VOUCHER_LIMIT_REACHED` is a conflict.
+Zero-payable voucher holds are rejected as `FREE_CHECKOUT_UNSUPPORTED` because
+there is no SePay-free confirmation flow.
+
+Hold responses include `voucherCode`, `voucherDiscountAmount`, and per-item
+`voucherDiscountAmount`/`netAmount`. Gross subtotal fields keep their existing
+meaning. `Booking.totalAmount` is net and is used unchanged by Payment,
+PaymentAttempt, and SePay. Cancellation uses item net amounts.
+
 This document defines the Booking API contract. `POST /api/v1/bookings/hold`
 is implemented as the first runtime Booking endpoint.
 
@@ -19,8 +41,8 @@ This contract covers:
 
 The hold endpoint implements PostgreSQL-backed reservation locking and capacity
 enforcement. The reservation expiration worker finalizes timed-out holds.
-Payment, refund, ticketing, and cancellation policy execution remain future
-tasks.
+Payment, refund, ticketing, cancellation policy, and vouchers are now
+implemented in their respective domains.
 
 ## Money
 

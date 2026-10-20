@@ -5,6 +5,7 @@ import {
   PaymentStatus,
   Prisma,
   ReservationStatus,
+  VoucherClaimStatus,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import {
@@ -15,7 +16,7 @@ import {
 
 type ExpirationTransactionClient = Pick<
   Prisma.TransactionClient,
-  '$queryRaw' | 'booking' | 'reservation'
+  '$queryRaw' | 'booking' | 'reservation' | 'voucherClaim'
 >;
 
 type DbNowRow = { now: Date };
@@ -129,7 +130,7 @@ export class BookingExpirationService {
     transaction: Pick<Prisma.TransactionClient, '$queryRaw'>,
   ): Promise<Date> {
     const [row] = await transaction.$queryRaw<DbNowRow[]>`
-      SELECT NOW() AS "now"
+      SELECT clock_timestamp() AS "now"
     `;
     if (!row) throw new Error('Failed to read database time');
     return row.now;
@@ -165,6 +166,7 @@ export class BookingExpirationService {
       },
       select: {
         id: true,
+        voucherId: true,
         payment: { select: { status: true } },
       },
     });
@@ -201,6 +203,15 @@ export class BookingExpirationService {
     if (updatedBooking.count !== 1) {
       throw new Error(
         `Booking expiration state changed unexpectedly for booking ${bookingId}`,
+      );
+    }
+    const releasedClaim = await transaction.voucherClaim.updateMany({
+      where: { bookingId, status: VoucherClaimStatus.RESERVED },
+      data: { status: VoucherClaimStatus.RELEASED, releasedAt: now },
+    });
+    if (booking.voucherId != null && releasedClaim.count !== 1) {
+      throw new Error(
+        `VoucherClaim changed during Booking expiration ${bookingId}`,
       );
     }
 

@@ -231,6 +231,7 @@ function setup(options: SetupOptions = {}) {
     payment,
     booking,
     reservation,
+    voucherClaim: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
   };
   const prisma = {
     $transaction: vi.fn(async (callback) => {

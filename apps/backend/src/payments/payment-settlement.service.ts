@@ -6,12 +6,18 @@ import {
   PaymentStatus,
   Prisma,
   ReservationStatus,
+  VoucherClaimStatus,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
 
 type SettlementTransactionClient = Pick<
   Prisma.TransactionClient,
-  '$queryRaw' | 'paymentAttempt' | 'payment' | 'booking' | 'reservation'
+  | '$queryRaw'
+  | 'paymentAttempt'
+  | 'payment'
+  | 'booking'
+  | 'reservation'
+  | 'voucherClaim'
 >;
 
 type LockedRow = { id: string };
@@ -40,7 +46,8 @@ export type PaymentSettlementReconciliationReason =
   | 'RESERVATION_MISSING'
   | 'RESERVATION_EXPIRED'
   | 'RESERVATION_RELEASED'
-  | 'INCONSISTENT_RESERVATION_STATE';
+  | 'INCONSISTENT_RESERVATION_STATE'
+  | 'VOUCHER_CLAIM_INVALID';
 
 type SettlementResultBase = Readonly<{
   attemptId: string;
@@ -92,6 +99,16 @@ const paymentSelect = {
       currency: true,
       expiresAt: true,
       confirmedAt: true,
+      voucherId: true,
+      voucherClaim: {
+        select: {
+          id: true,
+          voucherId: true,
+          bookingId: true,
+          status: true,
+          expiresAt: true,
+        },
+      },
       items: {
         orderBy: { id: 'asc' },
         select: {
@@ -247,6 +264,11 @@ export class PaymentSettlementService {
 
     if (payment.booking.status === BookingStatus.CONFIRMED) {
       if (
+        (payment.booking.voucherId != null &&
+          (payment.booking.voucherClaim?.status !==
+            VoucherClaimStatus.REDEEMED ||
+            payment.booking.voucherClaim.voucherId !==
+              payment.booking.voucherId)) ||
         !reservations.every(
           (reservation) =>
             reservation.status === ReservationStatus.CONFIRMED &&
@@ -335,7 +357,12 @@ export class PaymentSettlementService {
             status === ReservationStatus.EXPIRED,
         )
       ) {
-        await this.expireLateBooking(transaction, input.bookingId, now);
+        await this.expireLateBooking(
+          transaction,
+          input.bookingId,
+          payment.booking.voucherId ?? null,
+          now,
+        );
       }
       return this.reconciliation(base, 'BOOKING_EXPIRED');
     }
@@ -361,6 +388,25 @@ export class PaymentSettlementService {
         paymentNeedsSuccess,
       );
       return this.reconciliation(base, reservationFailure);
+    }
+
+    const claim = payment.booking.voucherClaim;
+    if (
+      payment.booking.voucherId != null &&
+      (!claim ||
+        claim.bookingId !== input.bookingId ||
+        claim.voucherId !== payment.booking.voucherId ||
+        claim.status !== VoucherClaimStatus.RESERVED ||
+        claim.expiresAt <= now)
+    ) {
+      await this.recordPaymentSuccess(
+        transaction,
+        input,
+        now,
+        attemptNeedsSuccess,
+        paymentNeedsSuccess,
+      );
+      return this.reconciliation(base, 'VOUCHER_CLAIM_INVALID');
     }
 
     await this.recordPaymentSuccess(
@@ -402,6 +448,21 @@ export class PaymentSettlementService {
       throw new Error('Reservation set changed during payment settlement');
     }
 
+    if (claim) {
+      const claimUpdate = await transaction.voucherClaim.updateMany({
+        where: {
+          id: claim.id,
+          voucherId: claim.voucherId,
+          bookingId: input.bookingId,
+          status: VoucherClaimStatus.RESERVED,
+          expiresAt: { gt: now },
+        },
+        data: { status: VoucherClaimStatus.REDEEMED, redeemedAt: now },
+      });
+      if (claimUpdate.count !== 1)
+        throw new Error('VoucherClaim changed during payment settlement');
+    }
+
     return {
       ...base,
       outcome: 'CONFIRMED',
@@ -438,6 +499,9 @@ export class PaymentSettlementService {
         FOR UPDATE
       `,
     );
+    await transaction.$queryRaw<LockedRow[]>(Prisma.sql`
+      SELECT "id" FROM "voucher_claims" WHERE "booking_id" = ${input.bookingId}::uuid FOR UPDATE
+    `);
 
     if (!bookingRows[0] || !paymentRows[0] || !attemptRows[0]) {
       throw new Error('Failed to lock payment settlement aggregate');
@@ -449,7 +513,7 @@ export class PaymentSettlementService {
     transaction: Pick<Prisma.TransactionClient, '$queryRaw'>,
   ): Promise<Date> {
     const [row] = await transaction.$queryRaw<DbNowRow[]>`
-      SELECT NOW() AS "now"
+      SELECT clock_timestamp() AS "now"
     `;
     if (!row) throw new Error('Failed to read database time');
     return row.now;
@@ -504,8 +568,12 @@ export class PaymentSettlementService {
   }
 
   private async expireLateBooking(
-    transaction: Pick<Prisma.TransactionClient, 'booking' | 'reservation'>,
+    transaction: Pick<
+      Prisma.TransactionClient,
+      'booking' | 'reservation' | 'voucherClaim'
+    >,
     bookingId: string,
+    voucherId: string | null,
     now: Date,
   ): Promise<void> {
     await transaction.reservation.updateMany({
@@ -528,6 +596,13 @@ export class PaymentSettlementService {
     });
     if (bookingUpdate.count !== 1) {
       throw new Error('Late Booking expiration changed during settlement');
+    }
+    const releasedClaim = await transaction.voucherClaim.updateMany({
+      where: { bookingId, status: VoucherClaimStatus.RESERVED },
+      data: { status: VoucherClaimStatus.RELEASED, releasedAt: now },
+    });
+    if (voucherId !== null && releasedClaim.count !== 1) {
+      throw new Error('VoucherClaim changed during late Booking expiration');
     }
   }
 

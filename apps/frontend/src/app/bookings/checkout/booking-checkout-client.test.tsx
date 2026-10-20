@@ -8,6 +8,7 @@ import {
   getPublicService,
   initiateSePayPayment,
   listPublicSlots,
+  validateVoucher,
   type BookingHoldResponse,
   type PublicServiceDetail,
   type PublicSlot,
@@ -53,6 +54,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     initiateSePayPayment: vi.fn(),
     listPublicSlots: vi.fn(),
     login: vi.fn(),
+    validateVoucher: vi.fn(),
   };
 });
 
@@ -148,6 +150,7 @@ describe("BookingCheckoutClient hold behavior", () => {
     vi.mocked(getPublicService).mockReset();
     vi.mocked(initiateSePayPayment).mockReset();
     vi.mocked(listPublicSlots).mockReset();
+    vi.mocked(validateVoucher).mockReset();
     vi.mocked(submitExternalPaymentForm).mockReset();
     saveCheckoutDraft(draft, window.sessionStorage);
     replaceHoldAttempt(draft, window.sessionStorage, () => "stable-key");
@@ -181,6 +184,100 @@ describe("BookingCheckoutClient hold behavior", () => {
     expect(await screen.findByText("GBK-TEST")).toBeVisible();
   });
 
+  it("previews a voucher before hold, sends only the code, and shows immutable net pricing", async () => {
+    vi.mocked(validateVoucher).mockResolvedValue({
+      valid: true,
+      reason: "VALID",
+      code: "SALE20",
+      type: "PERCENTAGE",
+      grossSubtotalAmount: "200000",
+      discountAmount: "40000",
+      netTotalAmount: "160000",
+    });
+    vi.mocked(createBookingHold).mockResolvedValue({
+      ...booking,
+      subtotalAmount: "200000",
+      voucherCode: "SALE20",
+      voucherDiscountAmount: "40000",
+      totalAmount: "160000",
+    });
+    renderCheckout();
+    fireEvent.change(await screen.findByLabelText("Mã voucher"), {
+      target: { value: "sale20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng" }));
+    expect(await screen.findByText("Voucher SALE20")).toBeVisible();
+    expect(screen.getByText("160.000 ₫")).toBeVisible();
+    expect(createBookingHold).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Giữ chỗ" }));
+    await waitFor(() => expect(createBookingHold).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(createBookingHold).mock.calls[0]?.[0]).toMatchObject({
+      voucherCode: "SALE20",
+      items: [{ slotId: "slot-a", quantity: 2 }],
+    });
+    expect(await screen.findByText("GBK-TEST")).toBeVisible();
+    expect(screen.getAllByText("160.000 ₫").length).toBeGreaterThan(0);
+  });
+
+  it("reports invalid preview and a usage limit reached after a valid preview", async () => {
+    vi.mocked(validateVoucher)
+      .mockResolvedValueOnce({
+        valid: false,
+        reason: "VOUCHER_MIN_ORDER_NOT_MET",
+        code: "SALE20",
+        grossSubtotalAmount: "200000",
+        discountAmount: "0",
+        netTotalAmount: "200000",
+      })
+      .mockResolvedValueOnce({
+        valid: true,
+        reason: "VALID",
+        code: "SALE20",
+        grossSubtotalAmount: "200000",
+        discountAmount: "40000",
+        netTotalAmount: "160000",
+      });
+    vi.mocked(createBookingHold).mockRejectedValueOnce(
+      new ApiError(409, "limit", "VOUCHER_LIMIT_REACHED"),
+    );
+    renderCheckout();
+    fireEvent.change(await screen.findByLabelText("Mã voucher"), {
+      target: { value: "SALE20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng" }));
+    expect(
+      await screen.findByText("Đơn hàng chưa đạt mức tối thiểu của voucher."),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng" }));
+    expect(await screen.findByText("Voucher SALE20")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Giữ chỗ" }));
+    expect(
+      await screen.findByText("Voucher đã hết lượt sử dụng."),
+    ).toBeVisible();
+  });
+
+  it("restores an immutable discounted hold after page refresh without requoting", async () => {
+    saveHeldBooking(
+      {
+        serviceSlug: draft.serviceSlug,
+        booking: {
+          ...booking,
+          subtotalAmount: "200000",
+          voucherCode: "SALE20",
+          voucherDiscountAmount: "40000",
+          totalAmount: "160000",
+        },
+      },
+      window.sessionStorage,
+    );
+    renderCheckout();
+    expect(await screen.findByText("GBK-TEST")).toBeVisible();
+    expect(screen.getByText("Voucher SALE20")).toBeVisible();
+    expect(screen.getAllByText("160.000 ₫").length).toBeGreaterThan(0);
+    expect(validateVoucher).not.toHaveBeenCalled();
+    expect(createBookingHold).not.toHaveBeenCalled();
+  });
+
   it("retries a network failure with the same Idempotency-Key", async () => {
     vi.mocked(createBookingHold)
       .mockRejectedValueOnce(new TypeError("connection dropped"))
@@ -210,9 +307,13 @@ describe("BookingCheckoutClient hold behavior", () => {
     renderCheckout();
 
     fireEvent.click(await screen.findByRole("button", { name: "Giữ chỗ" }));
-    expect(await screen.findByText("Không còn đủ chỗ cho số lượng bạn chọn.")).toBeVisible();
+    expect(
+      await screen.findByText("Không còn đủ chỗ cho số lượng bạn chọn."),
+    ).toBeVisible();
     await waitFor(() => expect(listPublicSlots).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText("Booking của bạn đang được giữ tạm thời.")).toBeNull();
+    expect(
+      screen.queryByText("Booking của bạn đang được giữ tạm thời."),
+    ).toBeNull();
   });
 
   it("renders snapshot checkout and submits one SePay POST-form contract", async () => {
@@ -253,9 +354,7 @@ describe("BookingCheckoutClient hold behavior", () => {
     fireEvent.click(pay);
     fireEvent.click(pay);
 
-    await waitFor(() =>
-      expect(initiateSePayPayment).toHaveBeenCalledTimes(1),
-    );
+    await waitFor(() => expect(initiateSePayPayment).toHaveBeenCalledTimes(1));
     expect(initiateSePayPayment).toHaveBeenCalledWith(
       booking.id,
       "customer-token",
@@ -297,9 +396,7 @@ describe("BookingCheckoutClient hold behavior", () => {
       await screen.findByRole("button", { name: "Thử thanh toán lại" }),
     );
 
-    await waitFor(() =>
-      expect(initiateSePayPayment).toHaveBeenCalledTimes(2),
-    );
+    await waitFor(() => expect(initiateSePayPayment).toHaveBeenCalledTimes(2));
     expect(vi.mocked(initiateSePayPayment).mock.calls[0]?.[0]).toBe(booking.id);
     expect(vi.mocked(initiateSePayPayment).mock.calls[1]?.[0]).toBe(booking.id);
   });

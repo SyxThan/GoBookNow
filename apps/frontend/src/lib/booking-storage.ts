@@ -7,6 +7,7 @@ export const HELD_BOOKING_STORAGE_KEY = "gobook.bookingCheckout.held";
 export type HoldPayload = {
   slotId: string;
   quantity: number;
+  voucherCode?: string;
 };
 
 export type HoldAttempt = HoldPayload & {
@@ -50,7 +51,13 @@ function readAttempt(storage: StorageLike): HoldAttempt | null {
   ) {
     return null;
   }
-  return { slotId: value.slotId, quantity: value.quantity, key: value.key };
+  return {
+    slotId: value.slotId,
+    quantity: value.quantity,
+    voucherCode:
+      typeof value.voucherCode === "string" ? value.voucherCode : undefined,
+    key: value.key,
+  };
 }
 
 export function ensureHoldAttempt(
@@ -62,7 +69,8 @@ export function ensureHoldAttempt(
   if (
     existing &&
     existing.slotId === payload.slotId &&
-    existing.quantity === payload.quantity
+    existing.quantity === payload.quantity &&
+    existing.voucherCode === payload.voucherCode
   ) {
     return existing;
   }
@@ -122,7 +130,9 @@ export function saveHeldBooking(
   storage.setItem(HELD_BOOKING_STORAGE_KEY, JSON.stringify(snapshot));
 }
 
-export function readHeldBooking(storage: StorageLike): HeldBookingSnapshot | null {
+export function readHeldBooking(
+  storage: StorageLike,
+): HeldBookingSnapshot | null {
   const value = parseJson(storage.getItem(HELD_BOOKING_STORAGE_KEY));
   if (
     !isRecord(value) ||

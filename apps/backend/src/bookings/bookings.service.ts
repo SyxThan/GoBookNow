@@ -20,11 +20,15 @@ import { CancellationPolicyProvider } from './cancellation/cancellation-policy.p
 import {
   bookingHoldResponseSelect,
   mapBookingHoldResponse,
+  voucherCodeFromSnapshot,
   type BookingHoldRecord,
 } from './booking.mapper.js';
 import { CapacityService } from './capacity.service.js';
 import type { BookingResponseDto } from './dto/booking-response.dto.js';
 import type { CreateBookingHoldDto } from './dto/create-booking-hold.dto.js';
+import { allocateVoucherDiscount } from '../vouchers/voucher-discount.engine.js';
+import { VouchersService } from '../vouchers/vouchers.service.js';
+import type { ValidateVoucherDto } from '../vouchers/dto/voucher.dto.js';
 
 const BOOKING_CODE_MAX_ATTEMPTS = 5;
 const HOLD_TTL_MINUTES_MIN = 1;
@@ -81,6 +85,7 @@ export class BookingsService {
     private readonly pricing: PricingService,
     private readonly bookingCodes: BookingCodeService,
     private readonly cancellationPolicies: CancellationPolicyProvider,
+    private readonly vouchers: VouchersService,
   ) {
     this.holdTtlMinutes = this.parseHoldTtlMinutes(
       this.config.get<string>('BOOKING_HOLD_TTL_MINUTES') ?? '10',
@@ -93,6 +98,9 @@ export class BookingsService {
     dto: CreateBookingHoldDto,
   ): Promise<BookingHoldResult> {
     const items = this.normalizeItems(dto);
+    const voucherCode = dto.voucherCode
+      ? this.vouchers.normalizeCode(dto.voucherCode)
+      : null;
 
     const existing = await this.findIdempotentBooking(
       this.prisma,
@@ -100,18 +108,25 @@ export class BookingsService {
       idempotencyKey,
     );
     if (existing) {
-      return this.resolveExistingIdempotentBooking(existing, items);
+      return this.resolveExistingIdempotentBooking(
+        existing,
+        items,
+        voucherCode,
+      );
     }
 
     for (let attempt = 0; attempt < BOOKING_CODE_MAX_ATTEMPTS; attempt += 1) {
       try {
-        return await this.prisma.$transaction(async (transaction) =>
-          this.createHoldInTransaction(
-            transaction,
-            customerId,
-            idempotencyKey,
-            items,
-          ),
+        return await this.prisma.$transaction(
+          async (transaction) =>
+            this.createHoldInTransaction(
+              transaction,
+              customerId,
+              idempotencyKey,
+              items,
+              voucherCode,
+            ),
+          { maxWait: 30_000, timeout: 30_000 },
         );
       } catch (error: unknown) {
         if (!this.isUniqueConstraintError(error)) throw error;
@@ -125,6 +140,7 @@ export class BookingsService {
           return this.resolveExistingIdempotentBooking(
             existingAfterConflict,
             items,
+            voucherCode,
           );
         }
 
@@ -148,9 +164,9 @@ export class BookingsService {
     customerId: string,
     idempotencyKey: string,
     items: readonly NormalizedHoldItem[],
+    voucherCode: string | null,
   ): Promise<BookingHoldResult> {
-    const now = await this.getDatabaseNow(transaction);
-    const expiresAt = new Date(now.getTime() + this.holdTtlMinutes * 60 * 1000);
+    let now = await this.getDatabaseNow(transaction);
     const slotIds = items.map(({ slotId }) => slotId);
 
     await this.capacity.lockSlots(transaction, slotIds);
@@ -164,6 +180,7 @@ export class BookingsService {
       return this.resolveExistingIdempotentBooking(
         existingAfterSlotLock,
         items,
+        voucherCode,
       );
     }
 
@@ -180,6 +197,7 @@ export class BookingsService {
       ...new Set(slotServiceIds.map(({ serviceId }) => serviceId)),
     ].sort();
     await this.capacity.lockServices(transaction, serviceIds);
+    now = await this.getDatabaseNow(transaction);
 
     const slots = await transaction.slot.findMany({
       where: { id: { in: slotIds } },
@@ -221,6 +239,31 @@ export class BookingsService {
       (sum, { snapshot }) => sum + snapshot.subtotalAmount,
       0n,
     );
+    // New holds lock Slots -> Services -> Voucher; settlement/expiry never lock Voucher.
+    const voucherApplication = voucherCode
+      ? await this.vouchers.lockAndValidate(
+          transaction,
+          voucherCode,
+          subtotalAmount,
+        )
+      : null;
+    if (voucherApplication) now = voucherApplication.now;
+    const expiresAt = new Date(now.getTime() + this.holdTtlMinutes * 60 * 1000);
+    const voucherDiscountAmount = voucherApplication?.discount ?? 0n;
+    const totalAmount = subtotalAmount - voucherDiscountAmount;
+    const allocations = allocateVoucherDiscount(
+      itemSnapshots.map(({ slot, snapshot }) => ({
+        key: slot.id,
+        grossSubtotalAmount: snapshot.subtotalAmount,
+      })),
+      voucherDiscountAmount,
+    );
+    if (
+      allocations.reduce((sum, item) => sum + item.netAmount, 0n) !==
+      totalAmount
+    ) {
+      throw new Error('VOUCHER_FINANCIAL_MISMATCH');
+    }
     const cancellationPolicySnapshot =
       this.cancellationPolicies.createBookingSnapshot();
 
@@ -232,17 +275,38 @@ export class BookingsService {
         status: BookingStatus.PENDING_PAYMENT,
         currency,
         subtotalAmount,
-        totalAmount: subtotalAmount,
+        voucherDiscountAmount,
+        totalAmount,
+        ...(voucherApplication
+          ? {
+              voucherId: voucherApplication.voucher.id,
+              voucherSnapshot: {
+                version: 1,
+                voucherCode: voucherApplication.voucher.code,
+                voucherType: voucherApplication.voucher.type,
+                fixedAmount:
+                  voucherApplication.voucher.fixedAmount?.toString() ?? null,
+                percentageBps: voucherApplication.voucher.percentageBps,
+                minOrderAmount:
+                  voucherApplication.voucher.minOrderAmount.toString(),
+                maxDiscountAmount:
+                  voucherApplication.voucher.maxDiscountAmount?.toString() ??
+                  null,
+                appliedDiscountAmount: voucherDiscountAmount.toString(),
+              },
+            }
+          : {}),
         cancellationPolicySnapshot,
         expiresAt,
         idempotencyKey,
         items: {
-          create: itemSnapshots.map(({ slot, snapshot }) => ({
+          create: itemSnapshots.map(({ slot, snapshot }, index) => ({
             serviceId: slot.serviceId,
             slotId: slot.id,
             quantity: snapshot.quantity,
             unitPriceAmount: snapshot.unitPriceAmount,
             subtotalAmount: snapshot.subtotalAmount,
+            voucherDiscountAmount: allocations[index]!.discountAmount,
             currency: snapshot.currency,
             pricingSource: snapshot.pricingSource,
             serviceTitleSnapshot: slot.service.title,
@@ -261,6 +325,18 @@ export class BookingsService {
       },
       select: bookingHoldResponseSelect,
     });
+
+    if (voucherApplication) {
+      await transaction.voucherClaim.create({
+        data: {
+          voucherId: voucherApplication.voucher.id,
+          bookingId: booking.id,
+          status: 'RESERVED',
+          expiresAt,
+          reservedAt: now,
+        },
+      });
+    }
 
     return { statusCode: 201, body: mapBookingHoldResponse(booking) };
   }
@@ -296,20 +372,60 @@ export class BookingsService {
   private resolveExistingIdempotentBooking(
     booking: BookingHoldRecord,
     requestedItems: readonly NormalizedHoldItem[],
+    requestedVoucherCode: string | null,
   ): BookingHoldResult {
     const storedItems = booking.items
       .map((item) => ({ slotId: item.slotId, quantity: item.quantity }))
       .sort((left, right) => left.slotId.localeCompare(right.slotId));
 
-    if (!this.sameNormalizedItems(storedItems, requestedItems)) {
+    if (
+      !this.sameNormalizedItems(storedItems, requestedItems) ||
+      voucherCodeFromSnapshot(booking.voucherSnapshot) !== requestedVoucherCode
+    ) {
       throw new ConflictException({
-        code: 'IDEMPOTENCY_CONFLICT',
+        code: 'IDEMPOTENCY_KEY_CONFLICT',
         message:
           'Idempotency-Key was already used for a different booking hold request.',
       });
     }
 
     return { statusCode: 200, body: mapBookingHoldResponse(booking) };
+  }
+
+  async quoteVoucher(dto: ValidateVoucherDto) {
+    const items = this.normalizeItems(dto);
+    const now = await this.vouchers.dbNow(this.prisma);
+    const slots = await this.prisma.slot.findMany({
+      where: { id: { in: items.map((item) => item.slotId) } },
+      select: holdSlotSelect,
+    });
+    const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+    const ordered = items.map((item) => {
+      const slot = slotById.get(item.slotId);
+      if (!slot) throw new NotFoundException('Slot not found');
+      this.assertBookableSlot(slot, now);
+      return slot;
+    });
+    this.assertSingleVendor(ordered);
+    this.resolveSingleCurrency(ordered);
+    const consumed = await this.capacity.calculateConsumedCapacity(
+      this.prisma,
+      items.map((item) => item.slotId),
+      now,
+    );
+    this.assertCapacity(items, ordered, consumed);
+    const gross = items.reduce((sum, item, index) => {
+      const slot = ordered[index]!;
+      const price = this.pricing.resolveEffectivePrice({
+        slotPriceAmount: slot.priceAmount,
+        servicePriceAmount: slot.service.priceAmount,
+        currency: slot.service.currency,
+      });
+      return (
+        sum + this.pricing.createSnapshot(price, item.quantity).subtotalAmount
+      );
+    }, 0n);
+    return this.vouchers.preview(dto.code, gross);
   }
 
   private sameNormalizedItems(
@@ -330,7 +446,7 @@ export class BookingsService {
     transaction: Pick<Prisma.TransactionClient, '$queryRaw'>,
   ): Promise<Date> {
     const [row] = await transaction.$queryRaw<DbNowRow[]>`
-      SELECT NOW() AS "now"
+      SELECT clock_timestamp() AS "now"
     `;
     if (!row) throw new Error('Failed to read database time');
     return row.now;

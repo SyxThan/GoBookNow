@@ -10,10 +10,19 @@ import { BookingCancellationService } from './cancellation/booking-cancellation.
 import { CapacityService } from './capacity.service.js';
 import { BookingExpirationScheduler } from './expiration/booking-expiration.scheduler.js';
 import { BookingExpirationService } from './expiration/booking-expiration.service.js';
+import {
+  AdminVouchersController,
+  CustomerVouchersController,
+} from '../vouchers/vouchers.controller.js';
+import { VouchersService } from '../vouchers/vouchers.service.js';
 
 @Module({
   imports: [AuthModule, PricingModule, RefundsModule],
-  controllers: [BookingsController],
+  controllers: [
+    BookingsController,
+    AdminVouchersController,
+    CustomerVouchersController,
+  ],
   providers: [
     BookingsService,
     CapacityService,
@@ -22,6 +31,7 @@ import { BookingExpirationService } from './expiration/booking-expiration.servic
     BookingCancellationService,
     BookingExpirationService,
     BookingExpirationScheduler,
+    VouchersService,
   ],
   exports: [BookingsService, CapacityService, BookingExpirationService],
 })

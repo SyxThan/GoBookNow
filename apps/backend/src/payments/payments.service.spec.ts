@@ -215,6 +215,30 @@ describe('PaymentsService', () => {
     );
   });
 
+  it('uses the net voucher total for Payment, Attempt, and SePay checkout', async () => {
+    const booking = {
+      ...makeBooking({ totalAmount: 440_000n }),
+      subtotalAmount: 500_000n,
+      voucherDiscountAmount: 60_000n,
+    } as TestBooking;
+    const { service, transaction, createCheckout } = setup({ booking });
+    const response = await service.initiateSepay(CUSTOMER_ID, BOOKING_ID);
+    expect(transaction.payment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 440_000n }),
+      }),
+    );
+    expect(transaction.paymentAttempt.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ amount: 440_000n }),
+      }),
+    );
+    expect(createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 440_000n }),
+    );
+    expect(response.amount).toBe('440000');
+  });
+
   it('reuses an existing pending Payment and usable pending attempt', async () => {
     const payment = makePayment();
     const existingAttempt = makeAttempt({

@@ -168,6 +168,8 @@ export type BookingHoldResponse = {
   status: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
   currency: string;
   subtotalAmount: string;
+  voucherDiscountAmount?: string;
+  voucherCode?: string | null;
   totalAmount: string;
   expiresAt: string | null;
   items: Array<{
@@ -180,6 +182,8 @@ export type BookingHoldResponse = {
     quantity: number;
     unitPriceAmount: string;
     subtotalAmount: string;
+    voucherDiscountAmount?: string;
+    netAmount?: string;
     pricingSource: "SERVICE" | "SLOT";
     reservation: {
       id: string;
@@ -472,6 +476,7 @@ export function createBookingHold(
   input: {
     idempotencyKey: string;
     items: CreateBookingHoldItem[];
+    voucherCode?: string;
   },
   accessToken: string | null,
   onToken: (token: string | null) => void,
@@ -481,8 +486,35 @@ export function createBookingHold(
     {
       method: "POST",
       headers: { "Idempotency-Key": input.idempotencyKey },
-      body: JSON.stringify({ items: input.items }),
+      body: JSON.stringify({
+        items: input.items,
+        ...(input.voucherCode ? { voucherCode: input.voucherCode } : {}),
+      }),
     },
+    accessToken,
+    onToken,
+  );
+}
+
+export type VoucherQuote = {
+  valid: boolean;
+  reason: string;
+  code: string;
+  type?: "FIXED" | "PERCENTAGE";
+  grossSubtotalAmount: string;
+  discountAmount: string;
+  netTotalAmount: string;
+};
+
+export function validateVoucher(
+  code: string,
+  items: CreateBookingHoldItem[],
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<VoucherQuote> {
+  return apiRequest<VoucherQuote>(
+    "/vouchers/validate",
+    { method: "POST", body: JSON.stringify({ code, items }) },
     accessToken,
     onToken,
   );

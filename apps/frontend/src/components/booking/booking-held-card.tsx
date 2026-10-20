@@ -56,8 +56,8 @@ export function BookingHeldCard({
           Booking của bạn đang được giữ tạm thời.
         </h1>
         <p className="mt-3 text-sm text-slate-300">
-          Booking <strong className="text-white">{booking.bookingCode}</strong> · trạng thái{" "}
-          <strong className="text-white">{booking.status}</strong>
+          Booking <strong className="text-white">{booking.bookingCode}</strong>{" "}
+          · trạng thái <strong className="text-white">{booking.status}</strong>
         </p>
       </div>
 
@@ -75,6 +75,18 @@ export function BookingHeldCard({
             value={formatMoney(item.unitPriceAmount, booking.currency)}
           />
           <HeldRow label="Reservation" value={item.reservation.status} />
+          {booking.voucherCode && (
+            <HeldRow
+              label="Tạm tính"
+              value={formatMoney(booking.subtotalAmount, booking.currency)}
+            />
+          )}
+          {booking.voucherCode && (
+            <HeldRow
+              label={`Voucher ${booking.voucherCode}`}
+              value={`-${formatMoney(booking.voucherDiscountAmount ?? "0", booking.currency)}`}
+            />
+          )}
           <div className="flex justify-between gap-6 border-t border-white/10 pt-5">
             <dt className="font-semibold text-slate-300">Tổng chính thức</dt>
             <dd className="text-2xl font-semibold text-teal-200">
@@ -83,8 +95,8 @@ export function BookingHeldCard({
           </div>
           {priceChanged && (
             <p className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-amber-100">
-              Giá đã được cập nhật trước khi reservation được tạo. Giá phía trên là
-              snapshot chính thức từ backend.
+              Giá đã được cập nhật trước khi reservation được tạo. Giá phía trên
+              là snapshot chính thức từ backend.
             </p>
           )}
         </dl>
@@ -113,7 +125,10 @@ export function BookingHeldCard({
             {time}
           </p>
           {urgent && (
-            <p className="mt-3 text-center text-sm font-medium text-amber-200" role="status">
+            <p
+              className="mt-3 text-center text-sm font-medium text-amber-200"
+              role="status"
+            >
               Thời gian giữ chỗ sắp hết.
             </p>
           )}
@@ -155,8 +170,12 @@ export function BookingHeldCard({
                   ? "Thử thanh toán lại"
                   : "Thanh toán với SePay"}
           </button>
-          <p id="payment-provider-note" className="mt-3 text-xs leading-5 text-slate-500">
-            Bạn sẽ được chuyển sang trang thanh toán bảo mật của SePay để quét mã QR.
+          <p
+            id="payment-provider-note"
+            className="mt-3 text-xs leading-5 text-slate-500"
+          >
+            Bạn sẽ được chuyển sang trang thanh toán bảo mật của SePay để quét
+            mã QR.
           </p>
         </aside>
       </div>

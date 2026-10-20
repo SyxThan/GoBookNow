@@ -73,6 +73,7 @@ const bookingAggregateSelect = {
     select: {
       id: true,
       subtotalAmount: true,
+      voucherDiscountAmount: true,
       slotStartAtSnapshot: true,
       reservation: { select: { id: true, status: true } },
       tickets: {
@@ -288,7 +289,7 @@ export class BookingCancellationService {
         bookingTotalAmount: booking.totalAmount,
         items: booking.items.map((item) => ({
           bookingItemId: item.id,
-          subtotalAmount: item.subtotalAmount,
+          subtotalAmount: item.subtotalAmount - item.voucherDiscountAmount,
           slotStartAtSnapshot: item.slotStartAtSnapshot,
         })),
         requestedAt,

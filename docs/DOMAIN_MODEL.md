@@ -1,5 +1,32 @@
 # GoBook — Domain Model
 
+## Implemented voucher model (current runtime)
+
+`Voucher` is platform-managed: ADMIN alone creates, lists, updates, and
+deactivates it through `/api/v1/admin/vouchers`. Codes are uppercase and unique
+in PostgreSQL. FIXED uses integer VND; PERCENTAGE uses integer basis points
+(1..10000). Minimum order compares gross subtotal; max discount and gross
+subtotal cap the discount. The validity window is `[validFrom, validUntil)`
+for new holds only. Changing a voucher does not reprice an accepted hold.
+
+One Voucher has many VoucherClaims. A Booking has zero or one Voucher and zero
+or one VoucherClaim; `VoucherClaim.bookingId` is unique and its foreign keys
+are restrictive. `Booking.voucherSnapshot` captures the immutable code, type,
+terms, version, and applied amount. `Booking.subtotalAmount` and
+`BookingItem.subtotalAmount` remain gross. Booking and item
+`voucherDiscountAmount` record the discount and proportional deterministic
+allocation. Item net amount is `subtotalAmount - voucherDiscountAmount`;
+their sum is `Booking.totalAmount`, Payment.amount, and PaymentAttempt.amount.
+Cancellation/refund policy uses net item amounts, not undiscounted gross.
+
+New holds lock Slots, Services, then the Voucher row. While holding the row
+lock, the transaction counts REDEEMED claims and RESERVED claims with
+`expiresAt > database NOW()`. It rejects when the global usage limit is full
+and creates Booking, items, Reservations, and one claim atomically. Expired
+RESERVED claims stop consuming usage even before worker cleanup. Admin cannot
+lower usageLimit below current effective usage. No voucher or claim hard-delete
+API exists.
+
 > Version: `v1.0.0-MVP`  
 > Document type: Domain Model + ERD v1  
 > Database: PostgreSQL  
@@ -1952,6 +1979,12 @@ giúp chống duplicate check-in ở DB level.
 ---
 
 # 68. Voucher Entity
+
+> Historical proposal only (sections 68–74). The implemented platform Voucher
+> and VoucherClaim schema, fields, ownership, and lifecycle are specified in
+> “Implemented voucher model (current runtime)” above. In particular there is
+> no `vendor_id`, `per_user_limit`, persisted Voucher status enum, or
+> `voucher_usages` table in the current MVP.
 
 ## Table
 

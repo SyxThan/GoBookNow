@@ -8,6 +8,8 @@ export const bookingHoldResponseSelect = {
   status: true,
   currency: true,
   subtotalAmount: true,
+  voucherDiscountAmount: true,
+  voucherSnapshot: true,
   totalAmount: true,
   expiresAt: true,
   items: {
@@ -18,6 +20,7 @@ export const bookingHoldResponseSelect = {
       quantity: true,
       unitPriceAmount: true,
       subtotalAmount: true,
+      voucherDiscountAmount: true,
       pricingSource: true,
       serviceTitleSnapshot: true,
       slotStartAtSnapshot: true,
@@ -47,6 +50,8 @@ export function mapBookingHoldResponse(
     status: booking.status,
     currency: booking.currency,
     subtotalAmount: serializeMoneyAmount(booking.subtotalAmount),
+    voucherDiscountAmount: serializeMoneyAmount(booking.voucherDiscountAmount),
+    voucherCode: voucherCodeFromSnapshot(booking.voucherSnapshot),
     totalAmount: serializeMoneyAmount(booking.totalAmount),
     expiresAt: booking.expiresAt?.toISOString() ?? null,
     items: booking.items.map((item) => {
@@ -64,6 +69,10 @@ export function mapBookingHoldResponse(
         quantity: item.quantity,
         unitPriceAmount: serializeMoneyAmount(item.unitPriceAmount),
         subtotalAmount: serializeMoneyAmount(item.subtotalAmount),
+        voucherDiscountAmount: serializeMoneyAmount(item.voucherDiscountAmount),
+        netAmount: serializeMoneyAmount(
+          item.subtotalAmount - item.voucherDiscountAmount,
+        ),
         pricingSource: item.pricingSource,
         reservation: {
           id: item.reservation.id,
@@ -73,4 +82,12 @@ export function mapBookingHoldResponse(
       };
     }),
   };
+}
+
+export function voucherCodeFromSnapshot(
+  snapshot: Prisma.JsonValue | null,
+): string | null {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot))
+    return null;
+  return typeof snapshot.voucherCode === 'string' ? snapshot.voucherCode : null;
 }

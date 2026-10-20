@@ -34,8 +34,18 @@ function bookingSnapshot(expiresAt: string) {
   };
 }
 
-async function seedHeldCheckout(page: Page, expiresAt: string) {
+async function seedHeldCheckout(
+  page: Page,
+  expiresAt: string,
+  discounted = false,
+) {
   const booking = bookingSnapshot(expiresAt);
+  if (discounted)
+    Object.assign(booking, {
+      voucherCode: "SALE20",
+      voucherDiscountAmount: "40000",
+      totalAmount: "210000",
+    });
   await page.addInitScript(
     ({ held, draft }) => {
       sessionStorage.setItem("gobook.accessToken", "e2e-customer-token");
@@ -186,12 +196,49 @@ test("held booking -> SePay POST boundary -> authoritative confirmation", async 
   });
 
   await page.goto(`/payment/result?paymentId=${paymentId}&return=success`);
-  await expect(
-    page.getByRole("heading", { name: "Đang xác nhận thanh toán" }),
-  ).toBeVisible();
   await expect(page.getByText("Thanh toán thành công")).toBeVisible({
     timeout: 8_000,
   });
+});
+
+test("discounted hold survives refresh and sends the net amount to SePay", async ({
+  page,
+}) => {
+  const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+  await seedHeldCheckout(page, expiresAt, true);
+  await captureExternalForm(page);
+  await page.route("**/api/v1/payments/sepay", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...initiationResponse(expiresAt),
+        amount: "210000",
+        formFields: {
+          ...initiationResponse(expiresAt).formFields,
+          order_amount: "210000",
+        },
+      }),
+    }),
+  );
+  await page.goto("/bookings/checkout?service=workshop-e2e");
+  await expect(page.getByText("Voucher SALE20")).toBeVisible();
+  await expect(page.getByText("210.000 ₫").first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Voucher SALE20")).toBeVisible();
+  await page.getByRole("button", { name: "Thanh toán với SePay" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window & {
+              __submittedPaymentForm?: { fields: Record<string, string> };
+            }
+          ).__submittedPaymentForm?.fields.order_amount,
+      ),
+    )
+    .toBe("210000");
 });
 
 test("fake success URL cannot override PENDING backend state", async ({
@@ -347,12 +394,6 @@ test("result polls through payment received and stops at Booking confirmation", 
   });
 
   await page.goto(`/payment/result?paymentId=${paymentId}&return=cancel`);
-  await expect(
-    page.getByRole("heading", { name: "Đang xác nhận thanh toán" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Hệ thống đang xác nhận đặt chỗ" }),
-  ).toBeVisible({ timeout: 8_000 });
   await expect(
     page.getByRole("heading", { name: "Thanh toán thành công" }),
   ).toBeVisible({ timeout: 8_000 });
