@@ -10,6 +10,7 @@ on:
     branches:
       - develop
       - main
+      - test/integration
 
 jobs:
   quality:
@@ -56,12 +57,12 @@ jobs:
       JWT_ACCESS_SECRET: ci-only-access-secret-change-outside-tests
       JWT_ACCESS_EXPIRES_IN: 15m
 
-      REFRESH_TOKEN_TTL_DAYS: '7'
+      REFRESH_TOKEN_TTL_DAYS: "7"
       AUTH_REFRESH_COOKIE_NAME: gobook_refresh_token
-      AUTH_COOKIE_SECURE: 'false'
+      AUTH_COOKIE_SECURE: "false"
       AUTH_COOKIE_SAME_SITE: lax
       FRONTEND_ORIGIN: http://localhost:3000
-      SWAGGER_ENABLED: 'true'
+      SWAGGER_ENABLED: "true"
 
     steps:
       - name: Checkout repository
@@ -96,3 +97,48 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  integration:
+    name: PostgreSQL lifecycle integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: gobook_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U test -d gobook_test"
+          --health-interval=2s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/gobook_test?schema=public
+      INTEGRATION_TEST_ALLOW_CLEANUP: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Guard database, validate, generate and deploy clean migrations
+        run: pnpm --filter backend test:integration:prepare
+      - name: Run PostgreSQL integration suite
+        run: pnpm --filter backend test:integration
+      - name: Repeat with shuffled test order
+        run: pnpm --filter backend test:integration --sequence.shuffle --sequence.seed=20261022
+      - name: Upload integration results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-results
+          path: apps/backend/test-results/integration.xml
+          if-no-files-found: ignore
