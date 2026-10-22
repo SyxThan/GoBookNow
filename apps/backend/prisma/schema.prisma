@@ -704,6 +704,7 @@ model Payment {
   booking  Booking          @relation(fields: [bookingId], references: [id], onDelete: Restrict)
   attempts PaymentAttempt[]
   refunds  Refund[]
+  reconciliations PaymentReconciliation[]
 
   @@index([status])
   @@index([status, succeededAt])
@@ -744,6 +745,26 @@ model PaymentAttempt {
   @@index([provider, status])
   @@index([expiresAt])
   @@map("payment_attempts")
+}
+
+// Immutable authenticated incoming exception facts. resolvedAt IS NULL means pending review.
+model PaymentReconciliation {
+  id String @id @default(uuid()) @db.Uuid
+  provider PaymentProvider
+  providerTransactionId String @map("provider_transaction_id") @db.VarChar(128)
+  merchantReference String @map("merchant_reference") @db.VarChar(64)
+  receivedAmount BigInt @map("received_amount") @db.BigInt
+  currency String @db.VarChar(3)
+  reason String @db.VarChar(64)
+  paymentId String? @map("payment_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(3)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerTransactionId, merchantReference, receivedAmount, currency], map: "payment_reconciliation_event_key")
+  @@index([resolvedAt, createdAt])
+  @@index([paymentId])
+  @@map("payment_reconciliations")
 }
 
 model Refund {

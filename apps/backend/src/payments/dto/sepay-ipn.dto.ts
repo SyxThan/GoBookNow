@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -36,6 +37,7 @@ export class SepayIpnOrderDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(3)
+  @Matches(/^[A-Z]{3}$/)
   order_currency: string;
 
   @ApiProperty({ example: '250000.00' })
@@ -111,6 +113,7 @@ export class SepayIpnTransactionDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(3)
+  @Matches(/^[A-Z]{3}$/)
   transaction_currency: string;
 
   @IsOptional()

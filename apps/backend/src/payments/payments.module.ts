@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
+import { RefundsModule } from '../refunds/refunds.module.js';
+import { TicketsModule } from '../tickets/tickets.module.js';
 import { PaymentsController } from './payments.controller.js';
 import { PaymentMatchingService } from './payment-matching.service.js';
 import { PaymentSettlementService } from './payment-settlement.service.js';
@@ -11,7 +13,7 @@ import { PAYMENT_CHECKOUT_PROVIDER } from './providers/payment-checkout-provider
 import { SepayPaymentProvider } from './providers/sepay/sepay-payment.provider.js';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, RefundsModule, TicketsModule],
   controllers: [PaymentsController, SepayIpnController],
   providers: [
     PaymentsService,
