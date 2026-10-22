@@ -11,6 +11,7 @@ on:
       - develop
       - main
       - test/integration
+      - test/payment-edge-cases
 
 jobs:
   quality:

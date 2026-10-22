@@ -23,9 +23,9 @@ Automated IPN tests use synthetic payloads and a provider stub. Database suites 
 | Valid paid event | PENDING | PENDING_PAYMENT | HELD | Exact reference, amount, currency, new transaction ID | SUCCEEDED | CONFIRMED | CONFIRMED | 200 acknowledgment |
 | Multi-item paid event | PENDING | PENDING_PAYMENT | HELD on all items | Valid paid event | SUCCEEDED | CONFIRMED | CONFIRMED on all; Slot capacity unchanged | 200 acknowledgment |
 | Duplicate paid event | SUCCEEDED | CONFIRMED | CONFIRMED | Same transaction ID | SUCCEEDED; timestamps unchanged | CONFIRMED; timestamp unchanged | CONFIRMED; timestamps unchanged | 200 acknowledgment |
-| Unknown reference, including same amount | PENDING | PENDING_PAYMENT | HELD | Unknown merchant reference | PENDING | PENDING_PAYMENT | HELD | 200 acknowledgment, no match |
-| Wrong amount or currency | PENDING | PENDING_PAYMENT | HELD | Correct reference, wrong money data | PENDING | PENDING_PAYMENT | HELD | 200 acknowledgment, mismatch logged |
-| Transaction ID replacement or global collision | PENDING or SUCCEEDED | PENDING_PAYMENT or CONFIRMED | HELD or CONFIRMED | Reused or changed provider transaction ID | Unchanged | Unchanged | Unchanged | 200 acknowledgment, conflict logged |
+| Unknown reference, including same amount | PENDING | PENDING_PAYMENT | HELD | Unknown merchant reference | PENDING | PENDING_PAYMENT | HELD | 200 after durable unmatched fact |
+| Wrong amount or currency | PENDING | PENDING_PAYMENT | HELD | Correct reference, wrong money data | PENDING | PENDING_PAYMENT | HELD | 200 after durable mismatch record |
+| Transaction ID replacement or global collision | PENDING or SUCCEEDED | PENDING_PAYMENT or CONFIRMED | HELD or CONFIRMED | Reused or changed provider transaction ID | Unchanged | Unchanged | Unchanged | 200 after durable conflict record |
 | Invalid secret or malformed payload | PENDING | PENDING_PAYMENT | HELD | Missing/wrong secret or invalid structure | PENDING | PENDING_PAYMENT | HELD | 401 or 400 |
 | Unsupported void | SUCCEEDED | CONFIRMED | CONFIRMED | TRANSACTION_VOID | SUCCEEDED | CONFIRMED | CONFIRMED | 200 acknowledgment, no reversal |
 | Late paid event | PENDING | EXPIRED | EXPIRED | Valid paid event | SUCCEEDED for reconciliation | EXPIRED | EXPIRED | 200 acknowledgment |
@@ -34,4 +34,7 @@ Automated IPN tests use synthetic payloads and a provider stub. Database suites 
 | Payment versus expiration | PENDING | PENDING_PAYMENT before or after expiry | HELD before or after expiry | Settlement and sweep concurrently | SUCCEEDED if paid event recorded | CONFIRMED or EXPIRED | Matches Booking terminal state | Internally consistent |
 | Browser success or cancel hint | authoritative backend state | authoritative backend state | n/a | Return URL or refresh | Unchanged | Unchanged | Unchanged | UI follows backend; polls until terminal |
 
-`SUCCEEDED` with an unconfirmed Booking is a reconciliation state, not a successful reservation. Refund and reconciliation automation are not part of this test branch.
+`SUCCEEDED` with an unconfirmed Booking is a reconciliation state, not a successful reservation.
+The payment-edge-cases hardening now persists authenticated money exceptions and
+atomically reserves a PENDING full refund for exactly matched expired bookings.
+See [PAYMENT_EDGE_CASES.md](PAYMENT_EDGE_CASES.md) for the current policy and audit.

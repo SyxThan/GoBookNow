@@ -247,10 +247,11 @@ different transaction ID on that Attempt, or an ID already attached to another
 SePay Attempt, is a `TRANSACTION_ID_CONFLICT` and is never overwritten.
 
 Unknown references, amount/currency mismatches, late payments, invalid states,
-and transaction collisions are acknowledged and logged with sanitized local
-identifiers as candidates for future manual reconciliation. They are never
-auto-attached. The matching service is read-only; state mutation remains in the
-provider-agnostic transactional settlement service.
+and transaction collisions persist normalized authenticated exception facts in
+`payment_reconciliations` before acknowledgment, with sanitized logging. They are never
+auto-attached. The matching service is read-only; entitlement transitions remain
+in provider-agnostic transactional settlement. The IPN handler saves unmatched
+or conflicting approved-money assertions before acknowledging them.
 
 GoBook requires `order_status=CAPTURED`, `transaction_type=PAYMENT`, and
 `transaction_status=APPROVED`. Both provider amount fields must exactly match
@@ -275,15 +276,15 @@ success timestamps use the same database `NOW()`. Settlement validates one
 Reservation per BookingItem and exact update counts; any partial write failure
 rolls back the whole transaction. It never updates `Slot.capacity`.
 
-The same provider transaction on the same successful Attempt is an idempotent
-no-op. A different transaction already stored on the Attempt, or the same
+The same provider transaction on the same successful Attempt is a financial
+no-op; post-commit issuance may repair missing Ticket sequences. A different transaction already stored on the Attempt, or the same
 SePay transaction assigned to another Attempt, is acknowledged without
 confirming the Payment and logged for reconciliation. Terminal expired,
-cancelled, or failed state is never resurrected. Unknown references do not
-create financial records.
+cancelled, or failed state is never resurrected. Unknown references create only
+a durable unmatched reconciliation fact, never a Payment or Booking.
 
 Authenticated semantic events that redelivery cannot fix are acknowledged
-with HTTP 200 and sanitized reconciliation logging. Invalid credentials return
+with HTTP 200 after durable reconciliation persistence. Invalid credentials return
 401, structurally invalid payloads return 400, and transient internal failures
 return 5xx so SePay may retry.
 
@@ -458,15 +459,16 @@ leaving an intermediate normal state.
 
 Payment confirmation and Booking expiration may race. The IPN flow locks and
 re-checks Booking, Payment, and Attempt, uses database time, and acknowledges
-late money without resurrecting an expired/cancelled aggregate. Such events
-are logged for manual reconciliation.
+late money without resurrecting an expired/cancelled aggregate. An exactly matched
+expired Booking creates one PENDING full-refund obligation and a reconciliation
+fact in the settlement transaction. No external refund transfer is executed.
 
 Consistency rules include:
 
 - `Booking CONFIRMED` implies `Payment SUCCEEDED`.
 - `Booking EXPIRED` prevents later automatic Booking/Reservation confirmation;
   an authoritative late provider payment may still be recorded as `SUCCEEDED`
-  and logged for manual reconciliation/refund.
+  and reserved for full refund/reconciliation using the verified amount.
 - cancellation before payment moves a pending Payment to `CANCELLED`.
 
 There is no generic Payment status PATCH and no Payment delete endpoint.
