@@ -31,8 +31,7 @@ function errorMessage(error: unknown): string {
     if (error.status === 400) return "Mã thanh toán không hợp lệ.";
     if (error.status === 401)
       return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
-    if (error.status === 403)
-      return "Bạn không có quyền xem thanh toán này.";
+    if (error.status === 403) return "Bạn không có quyền xem thanh toán này.";
     if (error.status === 404) return "Không tìm thấy thanh toán.";
   }
   return "Không thể kết nối đến GoBook API. Vui lòng thử lại.";
@@ -141,9 +140,7 @@ export function PaymentResultClient() {
         <StatusIcon tone="success">✓</StatusIcon>
         <p className="eyebrow mt-7">Hoàn tất</p>
         <h1 className="mt-3 text-3xl font-semibold">Thanh toán thành công</h1>
-        <p className="mt-4 text-slate-300">
-          Đặt chỗ của bạn đã được xác nhận.
-        </p>
+        <p className="mt-4 text-slate-300">Đặt chỗ của bạn đã được xác nhận.</p>
         {details}
         <ResultActions bookingId={payment.booking.id} />
       </ResultShell>
@@ -176,8 +173,9 @@ export function PaymentResultClient() {
           Đặt chỗ chưa thể xác nhận
         </h1>
         <p className="mt-4 text-slate-300">
-          Thanh toán đã được ghi nhận nhưng đặt chỗ chưa thể xác nhận. Vui lòng
-          kiểm tra lại trạng thái đặt chỗ.
+          {payment.booking.status === "EXPIRED"
+            ? "Đã ghi nhận thanh toán, nhưng đặt chỗ đã hết hạn. Khoản tiền đang chờ xử lý hoàn tiền."
+            : "Thanh toán đã được ghi nhận nhưng đặt chỗ chưa thể xác nhận. Vui lòng kiểm tra lại trạng thái đặt chỗ."}
         </p>
         {details}
         <ResultActions />
@@ -224,9 +222,7 @@ export function PaymentResultClient() {
       <StatusIcon tone="pending" spinning />
       <p className="eyebrow mt-7">Đang chờ xác nhận</p>
       <h1 className="mt-3 text-3xl font-semibold">
-        {pollingTimedOut
-          ? "Đang chờ xác nhận"
-          : "Đang xác nhận thanh toán"}
+        {pollingTimedOut ? "Đang chờ xác nhận" : "Đang xác nhận thanh toán"}
       </h1>
       <p className="mt-4 text-slate-400">
         {returnHint === "success"
