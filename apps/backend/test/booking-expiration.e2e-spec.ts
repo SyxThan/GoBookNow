@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import {
@@ -19,6 +22,7 @@ import {
   BookingStatus,
   CategoryScope,
   PricingSource,
+  PrismaClient,
   ReservationStatus,
   ServiceKind,
   ServiceStatus,
@@ -531,6 +535,45 @@ describe('Booking expiration worker (e2e, PostgreSQL)', () => {
 
     const rerun = await expiration.sweepExpiredBookings();
     expect(rerun.expiredBookings).toBe(0);
+  });
+
+  it('waits for a busy connection pool beyond Prisma default acquisition timeout', async () => {
+    const past = addMs(await databaseNow(), -60_000);
+    const fixture = await createBookingWithReservations({
+      expiresAt: past,
+      reservations: [{ status: ReservationStatus.HELD, expiresAt: past }],
+    });
+    const config = app.get(ConfigService);
+    const pool = new Pool({
+      connectionString: config.getOrThrow<string>('DATABASE_URL'),
+      max: 1,
+      connectionTimeoutMillis: 10_000,
+    });
+    const client = new PrismaClient({ adapter: new PrismaPg(pool) });
+    const worker = new BookingExpirationService(
+      client as PrismaService,
+      config,
+    );
+    let releaseConnection: Promise<void> | undefined;
+
+    try {
+      await client.$connect();
+      const heldConnection = await pool.connect();
+      // Occupy the only connection longer than Prisma's default maxWait (2s).
+      releaseConnection = delay(2_500).then(() => heldConnection.release());
+      await expect(worker.sweepExpiredBookings()).resolves.toMatchObject({
+        expiredBookings: 1,
+        expiredReservations: 1,
+      });
+      await expectBookingStatus(fixture.bookingId, BookingStatus.EXPIRED);
+      await expectReservationStatuses(fixture.reservationIds, [
+        ReservationStatus.EXPIRED,
+      ]);
+    } finally {
+      await releaseConnection;
+      await client.$disconnect();
+      await pool.end();
+    }
   });
 
   it('processes bounded batches without starvation', async () => {
