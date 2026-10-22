@@ -80,6 +80,11 @@ describe('Concurrent lifecycle transactions on independent PostgreSQL connection
         payment: { status: 'SUCCEEDED' },
       });
       expect(confirmed.payment?.attempts).toHaveLength(1);
+      expect(
+        await prisma.ticket.count({
+          where: { bookingItem: { bookingId: b.id } },
+        }),
+      ).toBe(2);
       expect(confirmed.payment?.attempts[0]).toMatchObject({
         status: 'SUCCEEDED',
         providerTransactionId: event.transaction.transaction_id,
@@ -126,7 +131,7 @@ describe('Concurrent lifecycle transactions on independent PostgreSQL connection
     expect(await f.available(s.slots[0]!.id)).toBe(9);
   });
   it('keeps payment/expiration races coherent for both expired and active multi-slot voucher holds', async () => {
-    const { fixtures: f } = context();
+    const { fixtures: f, prisma } = context();
     for (let cycle = 0; cycle < 3; cycle++) {
       for (const expired of [false, true]) {
         const s = await f.createScenario({ slots: 2 });
@@ -148,6 +153,16 @@ describe('Concurrent lifecycle transactions on independent PostgreSQL connection
         expect(result.voucherClaim?.status).toBe(
           expired ? 'RELEASED' : 'REDEEMED',
         );
+        expect(
+          await prisma.ticket.count({
+            where: { bookingItem: { bookingId: b.id } },
+          }),
+        ).toBe(expired ? 0 : 2);
+        expect(
+          await prisma.refund.count({
+            where: { paymentId: p.paymentId, status: 'PENDING' },
+          }),
+        ).toBe(expired ? 1 : 0);
         for (const slot of s.slots)
           expect(await f.available(slot.id)).toBe(expired ? 10 : 9);
       }
