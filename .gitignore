@@ -12,6 +12,7 @@ node_modules/
 .env.*
 !.env.example
 !**/.env.example
+!**/.env.test.example
 
 # =========================
 # Build & Caching (Turborepo, Next.js, NestJS)
