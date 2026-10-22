@@ -67,8 +67,11 @@ export class BookingExpirationService {
     this.logger.log(`Booking expiration sweep started batchSize=${batchSize}`);
 
     try {
-      const result = await this.prisma.$transaction((transaction) =>
-        this.expireBatchInTransaction(transaction, batchSize),
+      const result = await this.prisma.$transaction(
+        (transaction) => this.expireBatchInTransaction(transaction, batchSize),
+        // Match booking holds: the default 2s acquisition / 5s execution limits
+        // are too short when the pool is busy or a full batch needs processing.
+        { maxWait: 30_000, timeout: 30_000 },
       );
       const completed = {
         ...result,

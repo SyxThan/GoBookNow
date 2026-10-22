@@ -176,6 +176,21 @@ BOOKING_EXPIRATION_INTERVAL_SECONDS=60
 BOOKING_EXPIRATION_BATCH_SIZE=100
 ```
 
+Each sweep allows up to 30 seconds to acquire a transaction and 30 seconds to
+execute the batch. These limits match booking hold creation. The scheduler skips
+overlapping sweeps within the same process.
+
+If a sweep reports `Unable to start a transaction in the given time`, check DB
+connectivity before increasing the limits. For local Docker on Windows, use
+`127.0.0.1` in `DATABASE_URL` if `localhost` resolves to `::1` and times out while
+IPv4 connects successfully. Restart the backend after changing `.env`.
+
+If the sweep reports a missing column such as `bookings.voucher_id`, the running
+database is behind the Prisma schema. From `apps/backend`, run
+`pnpm exec prisma migrate status`, then `pnpm exec prisma migrate deploy` to apply
+the committed migrations. A successful health check verifies connectivity; it
+does not verify that all feature migrations have been applied.
+
 The worker uses PostgreSQL as the source of truth:
 
 ```text
