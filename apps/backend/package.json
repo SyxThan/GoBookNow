@@ -22,7 +22,8 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "test:integration:prepare": "tsx test/integration/run.ts prepare",
-    "test:integration": "tsx test/integration/run.ts test"
+    "test:integration": "tsx test/integration/run.ts test",
+    "test:payment-edge-cases": "tsx test/integration/run.ts test payment-edge-cases.int-spec.ts payment-confirmation.int-spec.ts concurrency.int-spec.ts transaction-rollback.int-spec.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { PrismaService } from '../src/database/prisma/prisma.service.js';
+import { RefundService } from '../src/refunds/refund.service.js';
+import { TicketService } from '../src/tickets/ticket.service.js';
 import {
   BookingStatus,
   PaymentAttemptStatus,
@@ -324,6 +326,9 @@ describe('SePay strict payment matching (e2e)', () => {
     },
   };
   const prisma = {
+    paymentReconciliation: {
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     $transaction: vi.fn(
       (callback: (client: typeof transaction) => Promise<void>) =>
         callback(transaction),
@@ -345,6 +350,14 @@ describe('SePay strict payment matching (e2e)', () => {
         SepayIpnAuthGuard,
         PaymentMatchingService,
         PaymentSettlementService,
+        {
+          provide: RefundService,
+          useValue: { createRefundObligation: vi.fn().mockResolvedValue({}) },
+        },
+        {
+          provide: TicketService,
+          useValue: { issueTicketsForBooking: vi.fn().mockResolvedValue([]) },
+        },
         SepayIpnService,
         { provide: PrismaService, useValue: prisma },
       ],

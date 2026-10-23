@@ -9,6 +9,8 @@ import {
   VoucherClaimStatus,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import { RefundService } from '../refunds/refund.service.js';
+import { recordPaymentReconciliation } from './payment-reconciliation.js';
 
 type SettlementTransactionClient = Pick<
   Prisma.TransactionClient,
@@ -18,6 +20,8 @@ type SettlementTransactionClient = Pick<
   | 'booking'
   | 'reservation'
   | 'voucherClaim'
+  | 'refund'
+  | 'paymentReconciliation'
 >;
 
 type LockedRow = { id: string };
@@ -138,14 +142,44 @@ type SettlementReservation = NonNullable<
 export class PaymentSettlementService {
   private readonly logger = new Logger(PaymentSettlementService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly refunds: RefundService,
+  ) {}
 
   async settle(
     input: PaymentSettlementInput,
   ): Promise<PaymentSettlementResult> {
-    const result = await this.prisma.$transaction((transaction) =>
-      this.settleInTransaction(transaction, input),
-    );
+    const result = await this.prisma.$transaction(async (transaction) => {
+      const settled = await this.settleInTransaction(transaction, input);
+      if (settled.outcome === 'RECONCILIATION_REQUIRED') {
+        const attempt = await transaction.paymentAttempt.findUnique({
+          where: { id: input.attemptId },
+          select: { merchantReference: true },
+        });
+        if (!attempt) throw new Error('Locked payment attempt disappeared');
+        await recordPaymentReconciliation(
+          transaction,
+          { ...input, merchantReference: attempt.merchantReference },
+          settled.reason,
+          input.paymentId,
+        );
+        if (settled.reason === 'BOOKING_EXPIRED') {
+          await this.refunds.createRefundObligation(
+            {
+              paymentId: input.paymentId,
+              amount: input.amount,
+              reason: 'SYSTEM_CORRECTION',
+              reasonNote:
+                'Verified payment received after booking expiration; full refund pending.',
+              idempotencyKey: `late-payment:${input.attemptId}`,
+            },
+            transaction,
+          );
+        }
+      }
+      return settled;
+    });
 
     if (result.outcome === 'CONFIRMED') {
       this.logger.log({

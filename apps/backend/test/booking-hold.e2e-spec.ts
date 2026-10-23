@@ -14,6 +14,7 @@ import type { JwtPayload } from '../src/auth/types/jwt-payload.type.js';
 import { BookingsModule } from '../src/bookings/bookings.module.js';
 import { BookingExpirationService } from '../src/bookings/expiration/booking-expiration.service.js';
 import { PaymentSettlementService } from '../src/payments/payment-settlement.service.js';
+import { RefundService } from '../src/refunds/refund.service.js';
 import { PrismaModule } from '../src/database/prisma/prisma.module.js';
 import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import {
@@ -98,6 +99,12 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.paymentReconciliation.deleteMany({
+        where: { payment: { booking: { customerId: { in: userIds } } } },
+      });
+      await prisma.refund.deleteMany({
+        where: { payment: { booking: { customerId: { in: userIds } } } },
+      });
       await prisma.paymentAttempt.deleteMany({
         where: { payment: { booking: { customerId: { in: userIds } } } },
       });
@@ -331,14 +338,29 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
         .sort(),
     ).toEqual(['176000', '264000']);
     const commissionBooking = await prisma.booking.findUniqueOrThrow({
-      where: { id: held.body.id as string }, include: { items: true },
+      where: { id: held.body.id as string },
+      include: { items: true },
     });
     expect(commissionBooking.commissionBps).toBe(1000);
     expect(commissionBooking.platformFeeAmount).toBe(44_000n);
     expect(commissionBooking.vendorAmount).toBe(396_000n);
-    expect(commissionBooking.items.reduce((sum, item) => sum + (item.platformFeeAmount ?? 0n), 0n)).toBe(44_000n);
-    expect(commissionBooking.items.reduce((sum, item) => sum + (item.vendorAmount ?? 0n), 0n)).toBe(396_000n);
-    expect(commissionBooking.commissionSnapshot).toMatchObject({ version: 1, basis: 'NET_AFTER_DISCOUNT', netAmount: '440000' });
+    expect(
+      commissionBooking.items.reduce(
+        (sum, item) => sum + (item.platformFeeAmount ?? 0n),
+        0n,
+      ),
+    ).toBe(44_000n);
+    expect(
+      commissionBooking.items.reduce(
+        (sum, item) => sum + (item.vendorAmount ?? 0n),
+        0n,
+      ),
+    ).toBe(396_000n);
+    expect(commissionBooking.commissionSnapshot).toMatchObject({
+      version: 1,
+      basis: 'NET_AFTER_DISCOUNT',
+      netAmount: '440000',
+    });
     expect(
       await prisma.voucherClaim.count({
         where: { voucherId: discount.id, status: 'RESERVED' },
@@ -348,14 +370,22 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
 
   it('keeps an old snapshot when the configured rate changes', async () => {
     const firstSlot = await createSlot({});
-    const first = await hold(customerA, { items: [{ slotId: firstSlot, quantity: 1 }] }).expect(201);
+    const first = await hold(customerA, {
+      items: [{ slotId: firstSlot, quantity: 1 }],
+    }).expect(201);
     process.env.PLATFORM_COMMISSION_BPS = '1500';
     try {
       const secondSlot = await createSlot({});
-      const second = await hold(customerA, { items: [{ slotId: secondSlot, quantity: 1 }] }).expect(201);
+      const second = await hold(customerA, {
+        items: [{ slotId: secondSlot, quantity: 1 }],
+      }).expect(201);
       const [firstBooking, secondBooking] = await Promise.all([
-        prisma.booking.findUniqueOrThrow({ where: { id: first.body.id as string } }),
-        prisma.booking.findUniqueOrThrow({ where: { id: second.body.id as string } }),
+        prisma.booking.findUniqueOrThrow({
+          where: { id: first.body.id as string },
+        }),
+        prisma.booking.findUniqueOrThrow({
+          where: { id: second.body.id as string },
+        }),
       ]);
       expect(firstBooking.commissionBps).toBe(1000);
       expect(firstBooking.platformFeeAmount).toBe(15_000n);
@@ -482,7 +512,10 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
         expiresAt: new Date(Date.now() + 600_000),
       },
     });
-    const settlement = new PaymentSettlementService(prisma);
+    const settlement = new PaymentSettlementService(
+      prisma,
+      new RefundService(prisma),
+    );
     const input = {
       attemptId: attempt.id,
       paymentId: payment.id,
@@ -676,7 +709,10 @@ describe('Booking reservation hold (e2e, PostgreSQL)', () => {
       where: { bookingId },
       data: { expiresAt: past },
     });
-    const settlement = new PaymentSettlementService(prisma);
+    const settlement = new PaymentSettlementService(
+      prisma,
+      new RefundService(prisma),
+    );
     const [result] = await Promise.all([
       settlement.settle({
         attemptId: attempt.id,

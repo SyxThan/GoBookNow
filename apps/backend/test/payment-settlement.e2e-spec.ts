@@ -91,6 +91,15 @@ describe('Atomic payment settlement (e2e, PostgreSQL)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await prisma.paymentReconciliation.deleteMany({
+        where: { payment: { booking: { customerId } } },
+      });
+      await prisma.refund.deleteMany({
+        where: { payment: { booking: { customerId } } },
+      });
+      await prisma.ticket.deleteMany({
+        where: { bookingItem: { booking: { customerId } } },
+      });
       await prisma.paymentAttempt.deleteMany({
         where: { payment: { booking: { customerId } } },
       });

@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { PrismaService } from '../database/prisma/prisma.service.js';
+import type { RefundService } from '../refunds/refund.service.js';
 import {
   BookingStatus,
   PaymentAttemptStatus,
@@ -232,6 +233,9 @@ function setup(options: SetupOptions = {}) {
     booking,
     reservation,
     voucherClaim: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    paymentReconciliation: {
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
   };
   const prisma = {
     $transaction: vi.fn(async (callback) => {
@@ -247,7 +251,9 @@ function setup(options: SetupOptions = {}) {
   } as unknown as PrismaService;
 
   return {
-    service: new PaymentSettlementService(prisma),
+    service: new PaymentSettlementService(prisma, {
+      createRefundObligation: vi.fn().mockResolvedValue({}),
+    } as unknown as RefundService),
     state,
     transaction,
   };

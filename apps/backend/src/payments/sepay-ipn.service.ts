@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
+import { PrismaService } from '../database/prisma/prisma.service.js';
+import { TicketService } from '../tickets/ticket.service.js';
+import { recordPaymentReconciliation } from './payment-reconciliation.js';
 import type { SepayIpnDto } from './dto/sepay-ipn.dto.js';
 import type { NormalizedPaymentTransaction } from './normalized-payment-transaction.js';
 import {
@@ -7,8 +10,14 @@ import {
   type MatchedPaymentAttempt,
   type PaymentMatchResult,
 } from './payment-matching.service.js';
-import { PaymentSettlementService } from './payment-settlement.service.js';
-import { normalizeSepayTransaction } from './sepay-transaction.normalizer.js';
+import {
+  PaymentSettlementService,
+  type PaymentSettlementResult,
+} from './payment-settlement.service.js';
+import {
+  normalizeSepayTransaction,
+  normalizeSepayReceivedTransaction,
+} from './sepay-transaction.normalizer.js';
 
 const ORDER_PAID = 'ORDER_PAID';
 const TRANSACTION_VOID = 'TRANSACTION_VOID';
@@ -31,6 +40,8 @@ export class SepayIpnService {
   constructor(
     private readonly paymentMatching: PaymentMatchingService,
     private readonly paymentSettlement: PaymentSettlementService,
+    private readonly prisma: PrismaService,
+    private readonly tickets: TicketService,
   ) {}
 
   async process(dto: SepayIpnDto): Promise<SepayIpnAcknowledgement> {
@@ -54,6 +65,13 @@ export class SepayIpnService {
 
     const normalization = normalizeSepayTransaction(dto);
     if (!normalization.normalized) {
+      const received = normalizeSepayReceivedTransaction(dto);
+      if (received)
+        await recordPaymentReconciliation(
+          this.prisma,
+          received,
+          `PROVIDER_${normalization.reason}`,
+        );
       this.warn(normalization.reason, dto);
       return { success: true };
     }
@@ -61,6 +79,12 @@ export class SepayIpnService {
     const input = normalization.transaction;
     const initialMatch = await this.paymentMatching.match(input);
     if (!initialMatch.matched) {
+      await recordPaymentReconciliation(
+        this.prisma,
+        input,
+        initialMatch.reason,
+        initialMatch.attempt?.paymentId,
+      );
       this.warnMatch(initialMatch, dto, input);
       return { success: true };
     }
@@ -68,6 +92,12 @@ export class SepayIpnService {
       !initialMatch.processable &&
       initialMatch.reason !== 'ALREADY_SUCCEEDED'
     ) {
+      await recordPaymentReconciliation(
+        this.prisma,
+        input,
+        initialMatch.reason,
+        initialMatch.payment.id,
+      );
       this.warn(
         initialMatch.reason,
         dto,
@@ -76,8 +106,9 @@ export class SepayIpnService {
       return { success: true };
     }
 
+    let settlement: PaymentSettlementResult;
     try {
-      await this.paymentSettlement.settle({
+      settlement = await this.paymentSettlement.settle({
         attemptId: initialMatch.attempt.id,
         paymentId: initialMatch.payment.id,
         bookingId: initialMatch.booking.id,
@@ -88,6 +119,12 @@ export class SepayIpnService {
       });
     } catch (error: unknown) {
       if (this.isUniqueConstraintError(error)) {
+        await recordPaymentReconciliation(
+          this.prisma,
+          input,
+          'TRANSACTION_ID_CONFLICT',
+          initialMatch.payment.id,
+        );
         this.warn(
           'TRANSACTION_ID_CONFLICT',
           dto,
@@ -96,6 +133,15 @@ export class SepayIpnService {
         return { success: true };
       }
       throw error;
+    }
+
+    // Confirmation is durable already. An issuance failure returns 5xx; a replay
+    // re-enters ALREADY_CONFIRMED and repairs missing sequences without rotating tokens.
+    if (
+      settlement.outcome === 'CONFIRMED' ||
+      settlement.outcome === 'ALREADY_CONFIRMED'
+    ) {
+      await this.tickets.issueTicketsForBooking(initialMatch.booking.id);
     }
 
     return { success: true };

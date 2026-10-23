@@ -1,4 +1,5 @@
 import type { PrismaService } from '../database/prisma/prisma.service.js';
+import type { TicketService } from '../tickets/ticket.service.js';
 import {
   BookingStatus,
   PaymentAttemptStatus,
@@ -117,8 +118,12 @@ function setup(
       }),
     },
   };
+  const reconciliationCreate = vi.fn().mockResolvedValue({ count: 1 });
   const prisma = {
     paymentAttempt: transaction.paymentAttempt,
+    paymentReconciliation: {
+      createMany: reconciliationCreate,
+    },
   } as unknown as PrismaService;
   const settle = vi.fn().mockResolvedValue({
     outcome: 'CONFIRMED',
@@ -134,14 +139,32 @@ function setup(
     service: new SepayIpnService(
       new PaymentMatchingService(prisma),
       settlement,
+      prisma,
+      {
+        issueTicketsForBooking: vi.fn().mockResolvedValue([]),
+      } as unknown as TicketService,
     ),
     transaction,
     attempt,
     settle,
+    reconciliationCreate,
   };
 }
 
 describe('SepayIpnService', () => {
+  it('preserves conflicting provider amount assertions for durable review', async () => {
+    const { service, reconciliationCreate, settle } = setup();
+    await service.process(payload({ transactionAmount: '200000' }));
+    expect(settle).not.toHaveBeenCalled();
+    expect(reconciliationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          receivedAmount: 200_000n,
+          reason: 'PROVIDER_AMOUNT_MISMATCH',
+        }),
+      }),
+    );
+  });
   it('delegates a strict match to atomic payment settlement', async () => {
     const { service, settle, attempt } = setup();
 
@@ -170,7 +193,7 @@ describe('SepayIpnService', () => {
     expect(settle.mock.calls[0]?.[0]).toEqual(settle.mock.calls[1]?.[0]);
   });
 
-  it('does not create records for an unknown merchant reference', async () => {
+  it('does not create business payments for an unknown merchant reference', async () => {
     const { service, transaction, settle } = setup({ unknownReference: true });
 
     await expect(service.process(payload())).resolves.toEqual({
