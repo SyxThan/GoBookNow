@@ -650,6 +650,12 @@ function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
   return (
     <form className="mt-6 border-t border-white/10 pt-5" onSubmit={submit}>
       <h2 className="font-semibold text-white">Đăng nhập để giữ chỗ</h2>
+      <Link
+        href="/register"
+        className="mt-3 inline-block text-sm text-teal-300"
+      >
+        Chưa có tài khoản? Đăng ký khách hàng
+      </Link>
       <label className="mt-4 block">
         <span className="section-label">Email</span>
         <input

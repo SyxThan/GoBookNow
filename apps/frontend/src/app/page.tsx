@@ -13,6 +13,12 @@ export default function Home() {
           dựng gian hàng của bạn.
         </p>
         <div className="mt-9 flex flex-wrap justify-center gap-3">
+          <Link href="/register" className="secondary-button inline-flex">
+            Đăng ký khách hàng
+          </Link>
+          <Link href="/login" className="secondary-button inline-flex">
+            Đăng nhập
+          </Link>
           <Link href="/services" className="light-button inline-flex">
             Khám phá dịch vụ
           </Link>
