@@ -21,6 +21,13 @@ This starts a separate PostgreSQL server bound to `127.0.0.1:5433`, with synthet
 directory and does not mount the development database volume. Do not add
 `--remove-orphans`, `down -v`, or production secrets.
 
+The same compose file now starts a dedicated ephemeral Redis on
+`127.0.0.1:6380` for shared rate-limit tests. It does not touch development Redis
+on 6379. Tests use random keys with short TTL and never run FLUSHALL/FLUSHDB.
+Security and observability suites use the production HTTP configuration with
+real guards and PostgreSQL; focused aliases are `test:security` and
+`test:observability`. The full integration command already includes them.
+
 Copy `apps/backend/.env.test.example` to `apps/backend/.env.test`. Keep the copy
 untracked. The runner loads only `.env.test`; exported environment variables take
 precedence. It never obtains the integration database target from `.env`.
