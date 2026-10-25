@@ -1,3 +1,6 @@
+import { reportUnexpected, validRequestId } from "./monitoring";
+
+const correlation = () => ({ "X-Request-Id": crypto.randomUUID() });
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 
@@ -283,7 +286,11 @@ export type BookingReview = {
 
 export type BookingReviewEligibility = {
   eligible: boolean;
-  reason: "ELIGIBLE" | "REVIEW_BOOKING_NOT_COMPLETED" | "REVIEW_BOOKING_CANCELLED" | "REVIEW_ALREADY_EXISTS";
+  reason:
+    | "ELIGIBLE"
+    | "REVIEW_BOOKING_NOT_COMPLETED"
+    | "REVIEW_BOOKING_CANCELLED"
+    | "REVIEW_ALREADY_EXISTS";
   reviewId: string | null;
   reviewDeleted: boolean;
 };
@@ -346,6 +353,7 @@ export class ApiError extends Error {
     message: string,
     public readonly code?: string,
     public readonly details?: { slotId?: string; checkedInAt?: string },
+    public readonly requestId?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -363,14 +371,24 @@ async function readError(response: Response): Promise<ApiError> {
   const message = Array.isArray(payload?.message)
     ? payload.message.join(". ")
     : payload?.message;
-  return new ApiError(
+  const requestId = response.headers.get("X-Request-Id");
+  const safeId = validRequestId(requestId) ? requestId : undefined;
+  const error = new ApiError(
     response.status,
-    message ?? `Request failed with status ${response.status}`,
+    (response.status === 429
+      ? "Quá nhiều yêu cầu. Vui lòng thử lại sau."
+      : response.status >= 500
+        ? "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."
+        : (message ?? `Request failed with status ${response.status}`)) +
+      (safeId ? ` Mã hỗ trợ: ${safeId}` : ""),
     payload?.code,
     payload?.slotId || payload?.checkedInAt
       ? { slotId: payload.slotId, checkedInAt: payload.checkedInAt }
       : undefined,
+    safeId,
   );
+  if (response.status >= 500) reportUnexpected(error, safeId);
+  return error;
 }
 
 function queryString(values: object): string {
@@ -382,7 +400,10 @@ function queryString(values: object): string {
 }
 
 async function publicGet<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { signal });
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    signal,
+    headers: correlation(),
+  });
   if (!response.ok) throw await readError(response);
   return response.json() as Promise<T>;
 }
@@ -418,13 +439,29 @@ export type PublicVendorReviews = {
   reviewCount: number;
   averageRating: number | null;
   ratingDistribution: Record<string, number>;
-  data: { rating: number; comment: string | null; createdAt: string; author: string }[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  data: {
+    rating: number;
+    comment: string | null;
+    createdAt: string;
+    author: string;
+  }[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
-export function getPublicVendorReviews(vendorId: string, page = 1, signal?: AbortSignal) {
+export function getPublicVendorReviews(
+  vendorId: string,
+  page = 1,
+  signal?: AbortSignal,
+) {
   return publicGet<PublicVendorReviews>(
-    `/vendors/${encodeURIComponent(vendorId)}/reviews?page=${page}&limit=5`, signal);
+    `/vendors/${encodeURIComponent(vendorId)}/reviews?page=${page}&limit=5`,
+    signal,
+  );
 }
 
 export function listPublicSlots(
@@ -441,6 +478,7 @@ async function refreshAccessToken(): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: "POST",
     credentials: "include",
+    headers: correlation(),
   });
   if (!response.ok) throw await readError(response);
   return ((await response.json()) as AccessTokenPayload).accessToken;
@@ -450,7 +488,7 @@ export async function login(email: string, password: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...correlation() },
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) throw await readError(response);
@@ -466,7 +504,7 @@ export async function registerCustomer(input: {
   const response = await fetch(`${API_BASE_URL}/auth/register`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...correlation() },
     body: JSON.stringify(input),
   });
   if (!response.ok) throw await readError(response);
@@ -477,6 +515,7 @@ export async function logout(): Promise<void> {
   await fetch(`${API_BASE_URL}/auth/logout`, {
     method: "POST",
     credentials: "include",
+    headers: correlation(),
   });
 }
 
@@ -488,6 +527,7 @@ export async function apiRequest<T>(
   allowRefresh = true,
 ): Promise<T> {
   const headers = new Headers(init.headers);
+  headers.set("X-Request-Id", crypto.randomUUID());
   const isFormData =
     typeof FormData !== "undefined" && init.body instanceof FormData;
   if (init.body && !isFormData && !headers.has("Content-Type")) {
@@ -588,6 +628,7 @@ export async function apiDownload(
   allowRefresh = true,
 ): Promise<Blob> {
   const headers = new Headers();
+  headers.set("X-Request-Id", crypto.randomUUID());
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers,
@@ -635,34 +676,73 @@ export function getBookingTickets(
   );
 }
 
-export function getBookingReviewEligibility(bookingId: string, accessToken: string | null,
-  onToken: (token: string | null) => void, signal?: AbortSignal): Promise<BookingReviewEligibility> {
-  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}/review/eligibility`,
-    { method: "GET", signal }, accessToken, onToken);
+export function getBookingReviewEligibility(
+  bookingId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  signal?: AbortSignal,
+): Promise<BookingReviewEligibility> {
+  return apiRequest(
+    `/bookings/${encodeURIComponent(bookingId)}/review/eligibility`,
+    { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
 }
 
-export function getBookingReview(bookingId: string, accessToken: string | null,
-  onToken: (token: string | null) => void, signal?: AbortSignal): Promise<BookingReview> {
-  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}/review`,
-    { method: "GET", signal }, accessToken, onToken);
+export function getBookingReview(
+  bookingId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  signal?: AbortSignal,
+): Promise<BookingReview> {
+  return apiRequest(
+    `/bookings/${encodeURIComponent(bookingId)}/review`,
+    { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
 }
 
-export function createBookingReview(bookingId: string, input: { rating: number; comment?: string },
-  accessToken: string | null, onToken: (token: string | null) => void): Promise<BookingReview> {
-  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}/review`,
-    { method: "POST", body: JSON.stringify(input) }, accessToken, onToken);
+export function createBookingReview(
+  bookingId: string,
+  input: { rating: number; comment?: string },
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<BookingReview> {
+  return apiRequest(
+    `/bookings/${encodeURIComponent(bookingId)}/review`,
+    { method: "POST", body: JSON.stringify(input) },
+    accessToken,
+    onToken,
+  );
 }
 
-export function updateBookingReview(reviewId: string, input: { rating: number; comment?: string },
-  accessToken: string | null, onToken: (token: string | null) => void): Promise<BookingReview> {
-  return apiRequest(`/reviews/${encodeURIComponent(reviewId)}`,
-    { method: "PATCH", body: JSON.stringify(input) }, accessToken, onToken);
+export function updateBookingReview(
+  reviewId: string,
+  input: { rating: number; comment?: string },
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<BookingReview> {
+  return apiRequest(
+    `/reviews/${encodeURIComponent(reviewId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    accessToken,
+    onToken,
+  );
 }
 
-export function deleteBookingReview(reviewId: string, accessToken: string | null,
-  onToken: (token: string | null) => void): Promise<void> {
-  return apiRequest(`/reviews/${encodeURIComponent(reviewId)}`,
-    { method: "DELETE" }, accessToken, onToken);
+export function deleteBookingReview(
+  reviewId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+): Promise<void> {
+  return apiRequest(
+    `/reviews/${encodeURIComponent(reviewId)}`,
+    { method: "DELETE" },
+    accessToken,
+    onToken,
+  );
 }
 
 export function previewBookingCancellation(

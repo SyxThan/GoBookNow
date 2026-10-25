@@ -42,7 +42,12 @@ export function CustomerAuthForm({ mode }: { mode: "register" | "login" }) {
           ? "Email này đã được đăng ký. Vui lòng đăng nhập."
           : reason instanceof ApiError && reason.status === 401
             ? "Email hoặc mật khẩu không đúng."
-            : "Không thể hoàn tất yêu cầu. Vui lòng kiểm tra thông tin và thử lại.",
+            : (reason instanceof ApiError && reason.status === 429
+                ? "Quá nhiều yêu cầu. Vui lòng thử lại sau."
+                : "Không thể hoàn tất yêu cầu. Vui lòng kiểm tra thông tin và thử lại.") +
+              (reason instanceof ApiError && reason.requestId
+                ? ` Mã hỗ trợ: ${reason.requestId}`
+                : ""),
       );
     } finally {
       setBusy(false);

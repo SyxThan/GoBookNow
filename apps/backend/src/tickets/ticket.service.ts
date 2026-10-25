@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { bindContext } from '../observability/context.js';
+import { logger } from '../observability/logger.js';
 import {
   ConflictException,
   ForbiddenException,
@@ -26,7 +28,7 @@ export class TicketService {
   constructor(private readonly prisma: PrismaService) {}
 
   async issueTicketsForBooking(bookingId: string): Promise<Ticket[]> {
-    return this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.$transaction(async (transaction) => {
       await this.lockBooking(transaction, bookingId);
 
       const booking = await transaction.booking.findUnique({
@@ -106,6 +108,12 @@ export class TicketService {
       this.assertExactTicketCounts(booking.items, tickets);
       return tickets;
     });
+    bindContext({ bookingId });
+    logger.emit('info', 'ticket.issuance.completed', {
+      bookingId,
+      ticketCount: result.length,
+    });
+    return result;
   }
 
   getTicketsForBooking(bookingId: string): Promise<Ticket[]> {

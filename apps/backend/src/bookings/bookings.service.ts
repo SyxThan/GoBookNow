@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { bindContext } from '../observability/context.js';
+import { logger } from '../observability/logger.js';
 import {
   BookingStatus,
   Prisma,
@@ -118,7 +120,7 @@ export class BookingsService {
 
     for (let attempt = 0; attempt < BOOKING_CODE_MAX_ATTEMPTS; attempt += 1) {
       try {
-        return await this.prisma.$transaction(
+        const result = await this.prisma.$transaction(
           async (transaction) =>
             this.createHoldInTransaction(
               transaction,
@@ -129,6 +131,12 @@ export class BookingsService {
             ),
           { maxWait: 30_000, timeout: 30_000 },
         );
+        bindContext({ bookingId: result.body.id });
+        logger.emit('info', 'booking.hold.created', {
+          bookingId: result.body.id,
+          userId: customerId,
+        });
+        return result;
       } catch (error: unknown) {
         if (!this.isUniqueConstraintError(error)) throw error;
 
@@ -278,8 +286,10 @@ export class BookingsService {
     );
     if (
       commission.netAmount !== totalAmount ||
-      itemCommissions.reduce((sum, item) => sum + item.vendorAmount, 0n) !== commission.vendorAmount
-    ) throw new Error('COMMISSION_FINANCIAL_MISMATCH');
+      itemCommissions.reduce((sum, item) => sum + item.vendorAmount, 0n) !==
+        commission.vendorAmount
+    )
+      throw new Error('COMMISSION_FINANCIAL_MISMATCH');
     const cancellationPolicySnapshot =
       this.cancellationPolicies.createBookingSnapshot();
 

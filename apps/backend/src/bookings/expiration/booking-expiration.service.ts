@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { jobContext } from '../../observability/context.js';
+import { captureUnexpected } from '../../observability/sentry.js';
 import {
   BookingStatus,
   PaymentStatus,
@@ -61,10 +63,16 @@ export class BookingExpirationService {
   async sweepExpiredBookings(
     options: BookingExpirationSweepOptions = {},
   ): Promise<BookingExpirationSweepResult> {
+    return jobContext('booking.expiration', () => this.runSweep(options));
+  }
+
+  private async runSweep(
+    options: BookingExpirationSweepOptions,
+  ): Promise<BookingExpirationSweepResult> {
     const batchSize = this.resolveBatchSize(options.batchSize);
     const startedAt = Date.now();
 
-    this.logger.log(`Booking expiration sweep started batchSize=${batchSize}`);
+    this.logger.log({ event: 'booking.expiration.started', batchSize });
 
     try {
       const result = await this.prisma.$transaction(
@@ -77,15 +85,11 @@ export class BookingExpirationService {
         ...result,
         durationMs: Date.now() - startedAt,
       };
-      this.logger.log(
-        `Booking expiration sweep completed candidates=${completed.candidateCount} expiredBookings=${completed.expiredBookings} expiredReservations=${completed.expiredReservations} skippedBookings=${completed.skippedBookings} durationMs=${completed.durationMs}`,
-      );
+      this.logger.log({ event: 'booking.expiration.completed', ...completed });
       return completed;
     } catch (error: unknown) {
-      this.logger.error(
-        'Booking expiration sweep failed',
-        error instanceof Error ? error.stack : undefined,
-      );
+      captureUnexpected(error);
+      this.logger.error({ event: 'booking.expiration.failed' });
       throw error;
     }
   }
