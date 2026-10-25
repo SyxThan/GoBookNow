@@ -206,3 +206,16 @@ IPN retries, QR/scanner and safe 500 correlation. Remote Sentry verification and
 CSP enforcement rollout are deployment tasks, not locally verified outcomes.
 
 See [OBSERVABILITY.md](OBSERVABILITY.md) for privacy and troubleshooting details.
+
+### Frontend typecheck on a clean checkout
+
+The frontend uses Next's generated global `LayoutProps<"/">`. Plain `tsc` does
+not generate that helper. CI checks types before the build, so a fresh checkout
+previously failed with TS2304, while local checks passed using `.next` types
+left by an earlier build. The frontend `typecheck` script now runs
+`next typegen && tsc --noEmit`, as supported by the installed Next.js version.
+Generated `.next` types and `next-env.d.ts` remain untracked; no hand-written
+replacement or type-check suppression is needed.
+Verification used an isolated copy of tracked frontend source with no `.next`,
+`next-env.d.ts` or TypeScript build cache: plain `tsc` reproduced TS2304; the new
+`pnpm --filter frontend typecheck` passed with CI's `NODE_ENV=test`.

@@ -98,6 +98,7 @@ jobs:
       - name: Typecheck applications and security/observability tests
         run: |
           pnpm --filter backend typecheck
+          # This script generates Next route helpers before running tsc.
           pnpm --filter frontend typecheck
 
       - name: Test
