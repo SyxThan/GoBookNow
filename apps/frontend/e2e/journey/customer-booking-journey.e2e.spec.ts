@@ -14,7 +14,13 @@ async function review(page: Page, name: string) {
 async function registerAndLogin(page: Page) {
   const email = `e2e-${randomUUID()}@example.invalid`;
   const password = "E2e-Customer-Password-2026";
-  await page.goto("/");
+  const home = await page.goto("/");
+  expect(home?.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(home?.headers()["x-frame-options"]).toBe("DENY");
+  expect(home?.headers()["content-security-policy-report-only"]).toContain(
+    "form-action 'self' https://pay-sandbox.sepay.vn https://pay.sepay.vn",
+  );
+  expect(home?.headers()["x-powered-by"]).toBeUndefined();
   await page
     .getByRole("link", { name: "Đăng ký khách hàng", exact: true })
     .click();
@@ -64,6 +70,7 @@ async function selectAndHold(page: Page, title: string, voucherCode?: string) {
   await page.getByRole("button", { name: "Giữ chỗ", exact: true }).click();
   const held = await response;
   expect(held.status()).toBe(201);
+  expect(held.headers()["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
   const { id } = (await held.json()) as { id: string };
   await expect(
     page.getByRole("heading", {
