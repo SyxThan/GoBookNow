@@ -19,6 +19,7 @@ import {
 } from "@/lib/booking-storage";
 import { formatMoney, locationLabel } from "@/lib/format";
 import { isFutureOpenSlot } from "@/lib/slots";
+import { Burst } from "@/components/ui/icon";
 
 export function ServiceDetailClient({ slug }: { slug: string }) {
   const router = useRouter();
@@ -74,21 +75,19 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
   const heroImage = service.images[0]?.url ?? service.thumbnailUrl;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 px-5 py-4">
+    <main className="min-h-[70vh] bg-canvas text-ink">
+      <header className="border-b border-line/10 px-5 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-          <Link href="/services" className="text-lg font-bold text-white">
-            GoBook<span className="text-teal-300">Now</span>
-          </Link>
-          <Link href="/services" className="text-sm text-slate-400 hover:text-white">
+          <span className="eyebrow">Khám phá / {service.category.name}</span>
+          <Link href="/services" className="text-sm text-muted hover:text-ink">
             ← Tất cả dịch vụ
           </Link>
         </div>
       </header>
 
       <div className="mx-auto max-w-6xl px-5 py-8 sm:py-12">
-        <section className="grid overflow-hidden rounded-3xl border border-white/10 bg-slate-900 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="relative min-h-64 bg-gradient-to-br from-teal-950 to-slate-950 lg:min-h-96">
+        <section className="panel grid overflow-hidden lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="graphic-grid relative min-h-64 border-b-2 border-line bg-mint lg:min-h-96 lg:border-r-2 lg:border-b-0">
             {heroImage ? (
               <Image
                 src={heroImage}
@@ -100,8 +99,8 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
                 className="object-cover"
               />
             ) : (
-              <div className="grid h-full place-items-center text-sm text-slate-500">
-                GoBook experience
+              <div className="grid h-full min-h-64 place-items-center px-8 py-12 text-center">
+                <div><Burst className="mx-auto mb-5 size-28 text-sun" /><p className="text-2xl font-extrabold">Một trải nghiệm<br />đang chờ bạn.</p><p className="mt-3 text-xs text-muted">Hình ảnh từ đối tác đang được cập nhật.</p></div>
               </div>
             )}
           </div>
@@ -110,10 +109,10 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
               {service.kind === "SERVICE" ? "Dịch vụ" : "Sự kiện"} ·{" "}
               {service.category.name}
             </p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white">
+            <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
               {service.title}
             </h1>
-            <p className="mt-4 leading-7 text-slate-300">
+            <p className="mt-4 leading-7 text-ink">
               {service.summary ?? service.description ?? "Thông tin đang được cập nhật."}
             </p>
             <dl className="mt-7 space-y-3 text-sm">
@@ -130,15 +129,17 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
           </div>
         </section>
 
+        {service.images.length > 1 && <section aria-label="Hình ảnh trải nghiệm" className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">{service.images.slice(1, 5).map((photo, index) => <a key={photo.url} href={photo.url} target="_blank" rel="noopener noreferrer" className="overflow-hidden rounded-xl border-2 border-line"><Image src={photo.url} alt={`${service.title} — hình ảnh ${index + 2}`} width={360} height={240} unoptimized className="aspect-[3/2] w-full object-cover" /></a>)}</section>}
+        {service.description && service.description !== service.summary && <section className="panel mt-8 p-6 sm:p-8"><h2 className="text-2xl">Về trải nghiệm này</h2><p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-muted">{service.description}</p></section>}
         <div className="mt-8 grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="panel p-5 sm:p-7" aria-busy={slotsQuery.isPending}>
             {slotsQuery.isPending ? (
               <SlotSkeleton />
             ) : slotsQuery.isError ? (
               <div role="alert">
-                <h2 className="text-xl font-semibold text-white">Không thể tải lịch trống</h2>
-                <p className="mt-2 text-sm text-slate-400">
-                  Đây là lỗi tải dữ liệu, không phải trạng thái hết Slot.
+                <h2 className="text-xl font-bold text-ink">Không thể tải lịch trống</h2>
+                <p className="mt-2 text-sm text-muted">
+                  Lịch chưa tải được. Hãy thử lại để xem các khung giờ còn trống.
                 </p>
                 <button
                   type="button"
@@ -152,10 +153,10 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
               <div className="grid min-h-56 place-items-center text-center">
                 <div>
                   <p className="text-3xl" aria-hidden="true">◷</p>
-                  <h2 className="mt-3 text-xl font-semibold text-white">
+                  <h2 className="mt-3 text-xl font-bold text-ink">
                     Hiện chưa có khung giờ khả dụng.
                   </h2>
-                  <p className="mt-2 text-sm text-slate-400">
+                  <p className="mt-2 text-sm text-muted">
                     Vui lòng quay lại sau để xem lịch mới.
                   </p>
                 </div>
@@ -170,9 +171,9 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
           </section>
 
           {slots.length > 0 && (
-            <aside className="panel p-5 lg:sticky lg:top-5">
-              <p className="eyebrow">Booking</p>
-              <h2 className="mt-3 text-xl font-semibold text-white">
+            <aside className="panel p-5 lg:sticky lg:top-28">
+              <p className="eyebrow">Lên lịch trải nghiệm</p>
+              <h2 className="mt-3 text-xl font-bold text-ink">
                 {selectedSlot ? "Chọn số lượng" : "Chọn một khung giờ"}
               </h2>
               {selectedSlot ? (
@@ -182,9 +183,9 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
                     max={selectedSlot.capacity}
                     onChange={setQuantity}
                   />
-                  <div className="mt-5 border-t border-white/10 pt-5">
-                    <p className="text-sm text-slate-400">Tổng dự kiến</p>
-                    <p className="mt-1 text-2xl font-semibold text-teal-200">
+                  <div className="mt-5 border-t border-line/10 pt-5">
+                    <p className="text-sm text-muted">Tổng dự kiến</p>
+                    <p className="mt-1 text-2xl font-bold text-info">
                       {formatMoney(
                         (BigInt(selectedSlot.price.amount) * BigInt(quantity)).toString(),
                         selectedSlot.price.currency,
@@ -193,8 +194,8 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
                   </div>
                 </div>
               ) : (
-                <p className="mt-3 text-sm leading-6 text-slate-400">
-                  Giá chính xác của từng Slot được hiển thị trong danh sách.
+                <p className="mt-3 text-sm leading-6 text-muted">
+                  Mỗi khung giờ có giá riêng được hiển thị trong danh sách.
                 </p>
               )}
               <button
@@ -212,7 +213,7 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
       </div>
 
       {slots.length > 0 && (
-        <div className="sticky bottom-0 border-t border-white/10 bg-slate-950/95 p-4 backdrop-blur lg:hidden">
+        <div className="sticky bottom-0 border-t border-line/10 bg-canvas/95 p-4 backdrop-blur lg:hidden">
           <button
             type="button"
             className="primary-button w-full"
@@ -229,19 +230,19 @@ export function ServiceDetailClient({ slug }: { slug: string }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-white/5 pb-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="text-right font-medium text-slate-200">{value}</dd>
+    <div className="flex justify-between gap-4 border-b border-line/5 pb-3">
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-right font-medium text-ink">{value}</dd>
     </div>
   );
 }
 
 function DetailSkeleton() {
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-10">
+    <main className="min-h-[70vh] bg-canvas px-5 py-10">
       <div className="mx-auto max-w-6xl animate-pulse">
-        <div className="h-80 rounded-3xl bg-slate-900" />
-        <div className="mt-7 h-96 rounded-3xl bg-slate-900" />
+        <div className="h-80 rounded-2xl bg-surface" />
+        <div className="mt-7 h-96 rounded-2xl bg-surface" />
       </div>
     </main>
   );
@@ -250,10 +251,10 @@ function DetailSkeleton() {
 function SlotSkeleton() {
   return (
     <div aria-label="Đang tải khung giờ" className="animate-pulse">
-      <div className="h-7 w-48 rounded bg-slate-800" />
+      <div className="h-7 w-48 rounded bg-soft" />
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         {Array.from({ length: 4 }, (_, index) => (
-          <div key={index} className="h-36 rounded-2xl bg-slate-800" />
+          <div key={index} className="h-36 rounded-2xl bg-soft" />
         ))}
       </div>
     </div>
@@ -262,10 +263,10 @@ function SlotSkeleton() {
 
 function ErrorPage({ title, onRetry }: { title: string; onRetry: () => void }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 p-5 text-center text-white">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas p-5 text-center text-ink">
       <div className="panel max-w-lg p-8" role="alert">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        <p className="mt-3 text-sm text-slate-400">Vui lòng kiểm tra kết nối và thử lại.</p>
+        <h1 className="text-2xl font-bold">{title}</h1>
+        <p className="mt-3 text-sm text-muted">Vui lòng kiểm tra kết nối và thử lại.</p>
         <button type="button" className="primary-button mt-6" onClick={onRetry}>
           Thử lại
         </button>

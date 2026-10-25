@@ -1,44 +1,21 @@
 import Link from "next/link";
+import { Burst, Icon } from "@/components/ui/icon";
+import { HomeCatalog } from "@/components/discovery/home-catalog";
 
 export default function Home() {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-6 text-slate-100">
-      <section className="max-w-3xl text-center">
-        <p className="eyebrow">GoBook</p>
-        <h1 className="mt-6 text-5xl font-semibold tracking-tight sm:text-7xl">
-          Biến dịch vụ thành trải nghiệm đáng nhớ.
-        </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-400">
-          Quản lý hồ sơ tổ chức, chuẩn bị cho quá trình xét duyệt và bắt đầu xây
-          dựng gian hàng của bạn.
-        </p>
-        <div className="mt-9 flex flex-wrap justify-center gap-3">
-          <Link href="/register" className="secondary-button inline-flex">
-            Đăng ký khách hàng
-          </Link>
-          <Link href="/login" className="secondary-button inline-flex">
-            Đăng nhập
-          </Link>
-          <Link href="/services" className="light-button inline-flex">
-            Khám phá dịch vụ
-          </Link>
-          <Link href="/vendor/profile" className="primary-button inline-flex">
-            Mở Vendor Profile
-          </Link>
-          <Link
-            href="/vendor/application"
-            className="secondary-button inline-flex"
-          >
-            Vendor Onboarding
-          </Link>
-          <Link
-            href="/admin/vendor-applications"
-            className="secondary-button inline-flex"
-          >
-            Admin Review
-          </Link>
+    <main>
+      <section className="border-b-2 border-line" aria-labelledby="hero-title"><div className="page-wrap grid items-center gap-12 !py-12 lg:grid-cols-[1.08fr_1fr] lg:!py-20">
+        <div><span className="badge bg-mint"><span className="size-1.5 rounded-full bg-ink" />Một chút mới mẻ cho mỗi ngày</span><h1 id="hero-title" className="display-title mt-7">Lên lịch cho<br /><span className="relative isolate inline-block px-2 before:absolute before:inset-x-0 before:bottom-0.5 before:-z-10 before:h-[43%] before:-rotate-2 before:bg-sun">niềm vui.</span></h1><p className="mt-6 max-w-md text-base leading-8 text-muted">Từ một buổi workshop đến sự kiện bạn mong chờ. Tìm trải nghiệm hợp gu, chọn lịch và để GoBookNow lo phần đặt chỗ.</p>
+          <form action="/services" className="panel mt-8 flex max-w-lg items-center gap-2 !rounded-xl !p-2"><label className="flex min-w-0 flex-1 items-center gap-3 pl-2"><Icon name="search" /><span className="sr-only">Bạn muốn trải nghiệm điều gì?</span><input name="q" type="search" placeholder="Bạn muốn thử điều gì?" className="min-h-11 w-full min-w-0 bg-transparent text-sm outline-none focus-visible:outline-focus" /></label><button className="primary-button !px-4" type="submit">Khám phá<Icon name="arrow" size={18} /></button></form>
+          <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold"><span className="flex items-center gap-1.5"><Icon name="check" size={16} />Chọn lịch linh hoạt</span><span className="flex items-center gap-1.5"><Icon name="check" size={16} />Thanh toán qua SePay</span><span className="flex items-center gap-1.5"><Icon name="check" size={16} />Vé QR tiện lợi</span></div>
         </div>
-      </section>
+        <div className="relative mx-auto w-full max-w-lg px-3 pb-7 pt-8" aria-label="Minh họa những trải nghiệm sáng tạo"><div className="graphic-grid absolute inset-3 rounded-[30px] border-2 border-line bg-lavender/40" /><Burst className="absolute -right-1 top-0 z-10 w-24 rotate-12 text-coral" /><div className="panel relative mx-6 rotate-[-5deg] !bg-mint p-5 !shadow-[8px_8px_0_var(--border)]"><div className="flex items-center justify-between"><span className="badge bg-canvas">Thử điều mới</span><Icon name="star" size={25} /></div><svg viewBox="0 0 360 230" className="mx-auto mt-2 w-full" role="img" aria-label="Minh họa chiếc cốc gốm và nhành cây"><ellipse cx="180" cy="206" rx="124" ry="12" fill="var(--foreground)" opacity=".12" /><path d="M246 105h25c42 0 42 63-2 63h-24" fill="none" stroke="var(--foreground)" strokeWidth="14" /><path d="m105 88 13 105c6 29 116 29 122 0l13-105Z" fill="var(--primary)" stroke="var(--foreground)" strokeWidth="4" /><ellipse cx="179" cy="88" rx="74" ry="23" fill="var(--surface)" stroke="var(--foreground)" strokeWidth="4" /><ellipse cx="179" cy="89" rx="60" ry="13" fill="var(--accent-coral)" stroke="var(--foreground)" strokeWidth="3" /><path d="M177 102V21m0 38c-39 0-40-29-40-29 37-3 40 29 40 29m0-19c40 0 42-27 42-27-38-3-42 27-42 27" fill="var(--accent-blue)" stroke="var(--foreground)" strokeWidth="3" /><path d="m55 65 7 13 15 2-11 10 3 15-14-7-13 7 2-15-11-10 15-2Z" fill="var(--secondary)" stroke="var(--foreground)" strokeWidth="3" /><path d="m288 43 5 10 12 2-9 8 2 12-10-6-10 6 2-12-9-8 12-2Z" fill="var(--surface)" stroke="var(--foreground)" strokeWidth="3" /></svg><p className="text-2xl font-extrabold tracking-tight">Tự tay làm. Tận lòng vui.</p><p className="mt-2 text-sm">Một khoảng nghỉ cho trí tò mò.</p></div><div className="panel relative ml-12 mr-1 mt-6 rotate-[3deg] !bg-sun p-5"><div className="flex items-center gap-4"><span className="grid size-12 shrink-0 place-items-center rounded-xl border-2 border-line bg-canvas"><Icon name="ticket" size={28} /></span><div><p className="eyebrow">Để dành một khoảnh khắc</p><p className="mt-1 text-lg font-extrabold">Một chiếc vé, nhiều kỷ niệm.</p></div></div></div><span className="badge absolute -left-1 bottom-5 -rotate-12 bg-coral">Đi một lần. Nhớ thật lâu.</span></div>
+      </div></section>
+      <div className="border-b-2 border-line bg-sun py-3"><div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-9 gap-y-2 px-5 text-xs font-extrabold sm:text-sm"><span>Khám phá theo cách của bạn</span><span aria-hidden="true">✳</span><span>Chọn lịch. Đặt chỗ. Tận hưởng.</span><span aria-hidden="true" className="hidden sm:inline">✳</span><span className="hidden sm:inline">Ngày thường cũng đáng nhớ</span></div></div>
+      <HomeCatalog />
+      <section id="cach-dat" className="border-y-2 border-line bg-surface"><div className="page-wrap"><div className="max-w-xl"><p className="eyebrow mb-3">Ít thao tác. Nhiều trải nghiệm.</p><h2 className="section-title">Kế hoạch vui, đặt trong vài bước.</h2></div><div className="mt-9 grid gap-6 md:grid-cols-3">{[["01", "Tìm điều bạn thích", "Khám phá dịch vụ và sự kiện, lọc theo lịch trình, địa điểm và ngân sách.", "bg-lavender"], ["02", "Chọn lịch & giữ chỗ", "Chọn khung giờ, kiểm tra giá và thanh toán trong thời gian giữ chỗ.", "bg-sun"], ["03", "Cầm vé, tận hưởng", "Theo dõi xác nhận trong tài khoản và mở mã QR khi đến trải nghiệm.", "bg-mint"]].map(([n, title, body, color]) => <article key={n} className="pt-2"><span className={`inline-grid size-12 place-items-center rounded-xl border-2 border-line text-lg font-extrabold shadow-[3px_3px_0_var(--border)] ${color}`}>{n}</span><h3 className="mt-5 text-xl">{title}</h3><p className="mt-3 max-w-sm text-sm leading-7 text-muted">{body}</p></article>)}</div></div></section>
+      <section className="page-wrap"><div className="panel relative grid gap-6 !bg-lavender px-7 py-10 sm:px-10 md:grid-cols-[1fr_auto] md:items-center"><div><p className="eyebrow mb-3">Dành cho người tạo trải nghiệm</p><h2 className="section-title max-w-xl">Bạn có trải nghiệm hay?<br />Cùng đưa nó đến nhiều người hơn.</h2><p className="mt-4 max-w-lg text-sm leading-7">Quản lý dịch vụ, lịch đặt và vé trong một không gian dành riêng cho đối tác.</p></div><Link href="/vendor/profile" className="primary-button justify-self-start">Trở thành đối tác<Icon name="arrow" /></Link></div></section>
     </main>
   );
 }
