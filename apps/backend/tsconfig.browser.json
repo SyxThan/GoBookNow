@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist-browser",
+    "incremental": false
+  },
+  "include": [
+    "test/browser/**/*.ts",
+    "test/integration/helpers/global-setup.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-browser", "**/*.spec.ts"]
+}

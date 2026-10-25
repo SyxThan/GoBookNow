@@ -13,12 +13,14 @@ node_modules/
 !.env.example
 !**/.env.example
 !**/.env.test.example
+!**/.env.e2e.example
 
 # =========================
 # Build & Caching (Turborepo, Next.js, NestJS)
 # =========================
 dist/
 **/dist/
+**/dist-browser/
 
 .next/
 **/.next/
