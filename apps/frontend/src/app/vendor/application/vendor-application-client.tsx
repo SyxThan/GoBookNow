@@ -235,13 +235,13 @@ export default function VendorApplicationClient() {
     return <LoginForm busy={busy} error={error} onSubmit={handleLogin} />;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas text-ink">
       <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
-        <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-8">
+        <header className="flex flex-wrap items-end justify-between gap-5 border-b border-line/10 pb-8">
           <div>
             <p className="eyebrow">Vendor Onboarding</p>
-            <h1 className="mt-3 text-4xl font-semibold">Đăng ký Vendor</h1>
-            <p className="mt-3 text-slate-400">
+            <h1 className="mt-3 text-4xl font-bold">Đăng ký Vendor</h1>
+            <p className="mt-3 text-muted">
               Gửi hồ sơ, bổ sung tài liệu và theo dõi kết quả xét duyệt.
             </p>
           </div>
@@ -262,8 +262,8 @@ export default function VendorApplicationClient() {
 
         {!vendor ? (
           <section className="panel mt-10 p-8 text-center">
-            <h2 className="text-2xl font-semibold">Bạn chưa có hồ sơ Vendor</h2>
-            <p className="mt-3 text-slate-400">
+            <h2 className="text-2xl font-bold">Bạn chưa có hồ sơ Vendor</h2>
+            <p className="mt-3 text-muted">
               Tạo hồ sơ tổ chức trước khi bắt đầu xét duyệt.
             </p>
             <Link
@@ -278,10 +278,10 @@ export default function VendorApplicationClient() {
             <section className="panel p-6 sm:p-8">
               <p className="section-label">{vendor.displayName}</p>
               <div className="mt-4 flex items-center justify-between gap-4">
-                <h2 className="text-2xl font-semibold">
+                <h2 className="text-2xl font-bold">
                   {STATUS_LABELS[vendor.status]}
                 </h2>
-                <span className="rounded-full bg-teal-300/10 px-3 py-1 text-xs font-semibold text-teal-200">
+                <span className="rounded-full bg-sun/30 px-3 py-1 text-xs font-bold text-info">
                   {vendor.status}
                 </span>
               </div>
@@ -330,13 +330,13 @@ function StatusAction({
 }) {
   if (vendor.status === "DRAFT" || vendor.status === "REJECTED") {
     return (
-      <div className="mt-7 rounded-2xl bg-slate-950 p-5">
+      <div className="mt-7 rounded-2xl bg-canvas p-5">
         {vendor.status === "REJECTED" && (
-          <p className="mb-4 text-sm text-rose-200">
+          <p className="mb-4 text-sm text-danger">
             Lý do: {application?.reviewNote ?? "Vui lòng cập nhật hồ sơ."}
           </p>
         )}
-        <p className="text-sm leading-6 text-slate-400">
+        <p className="text-sm leading-6 text-muted">
           Mỗi lần gửi lại tạo một application mới và giữ nguyên lịch sử cũ.
         </p>
         <button
@@ -362,7 +362,7 @@ function StatusAction({
     SUSPENDED: "Vendor đang tạm ngưng và không thể gửi hồ sơ mới.",
   };
   return (
-    <p className="mt-7 rounded-2xl bg-slate-950 p-5 text-sm leading-6 text-slate-300">
+    <p className="mt-7 rounded-2xl bg-canvas p-5 text-sm leading-6 text-ink">
       {descriptions[vendor.status]}
     </p>
   );
@@ -386,9 +386,10 @@ function UploadForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form onSubmit={onSubmit} className="mt-7 border-t border-white/10 pt-7">
-      <h3 className="font-semibold">Tải tài liệu ({count}/5)</h3>
+    <form onSubmit={onSubmit} className="mt-7 border-t border-line/10 pt-7">
+      <h3 className="font-bold">Tải tài liệu ({count}/5)</h3>
       <select
+                  aria-label="Loại tài liệu"
         className="input mt-4"
         value={documentType}
         onChange={(event) => onDocumentType(event.target.value as DocumentType)}
@@ -401,12 +402,12 @@ function UploadForm({
       </select>
       <input
         className="input mt-3"
-        type="file"
+        type="file" aria-label="Chọn tài liệu xét duyệt"
         accept="application/pdf,image/jpeg,image/png"
         onChange={(event) => onFile(event.target.files?.[0] ?? null)}
       />
       {file && (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-muted">
           {file.name} · {(file.size / 1024).toFixed(1)} KB
         </p>
       )}
@@ -429,19 +430,19 @@ function Documents({
 }) {
   return (
     <section className="panel p-6">
-      <h2 className="text-xl font-semibold">Tài liệu</h2>
+      <h2 className="text-xl font-bold">Tài liệu</h2>
       {documents.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">Chưa có tài liệu.</p>
+        <p className="mt-4 text-sm text-muted">Chưa có tài liệu.</p>
       ) : (
         <ul className="mt-4 space-y-3">
           {documents.map((document) => (
             <li
               key={document.id}
-              className="flex items-center justify-between gap-4 rounded-xl bg-slate-950 p-4"
+              className="flex items-center justify-between gap-4 rounded-xl bg-canvas p-4"
             >
               <div>
                 <p className="text-sm font-medium">{document.originalName}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted">
                   {DOCUMENT_LABELS[document.documentType]} ·{" "}
                   {(document.fileSize / 1024).toFixed(1)} KB
                 </p>
@@ -463,24 +464,24 @@ function Documents({
 function Timeline({ history }: { history: History[] }) {
   return (
     <section className="panel p-6">
-      <h2 className="text-xl font-semibold">Lịch sử xử lý</h2>
+      <h2 className="text-xl font-bold">Lịch sử xử lý</h2>
       {history.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">Chưa có sự kiện.</p>
+        <p className="mt-4 text-sm text-muted">Chưa có sự kiện.</p>
       ) : (
-        <ol className="mt-5 space-y-5 border-l border-slate-700 pl-5">
+        <ol className="mt-5 space-y-5 border-l border-line pl-5">
           {history.map((entry) => (
             <li key={entry.id}>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted">
                 {new Date(entry.createdAt).toLocaleString("vi-VN")}
               </p>
-              <p className="mt-1 font-semibold">
+              <p className="mt-1 font-bold">
                 {entry.fromStatus
                   ? `${STATUS_LABELS[entry.fromStatus]} → `
                   : "Submitted · "}
                 {STATUS_LABELS[entry.toStatus]}
               </p>
               {entry.note && (
-                <p className="mt-1 text-sm text-slate-400">{entry.note}</p>
+                <p className="mt-1 text-sm text-muted">{entry.note}</p>
               )}
             </li>
           ))}
@@ -503,9 +504,10 @@ function LoginForm({
     <Centered>
       <form onSubmit={onSubmit} className="panel w-full max-w-md p-8 text-left">
         <p className="eyebrow">Vendor Onboarding</p>
-        <h1 className="mt-3 text-3xl font-semibold">Đăng nhập</h1>
+        <h1 className="mt-3 text-3xl font-bold">Đăng nhập</h1>
         <input
           name="email"
+          aria-label="Email" autoComplete="username"
           type="email"
           required
           className="input mt-6"
@@ -513,6 +515,7 @@ function LoginForm({
         />
         <input
           name="password"
+          aria-label="Mật khẩu" autoComplete="current-password"
           type="password"
           required
           className="input mt-3"
@@ -529,7 +532,7 @@ function LoginForm({
 
 function Centered({ children }: { children: ReactNode }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-slate-100">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas px-5 text-ink">
       {children}
     </main>
   );
@@ -543,7 +546,7 @@ function Banner({
 }) {
   return (
     <div
-      className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${tone === "error" ? "border-rose-400/30 bg-rose-400/10 text-rose-200" : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"}`}
+      className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${tone === "error" ? "border-danger/30 bg-coral/30 text-danger" : "border-success/30 bg-mint/30 text-success"}`}
     >
       {children}
     </div>

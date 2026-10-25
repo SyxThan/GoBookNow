@@ -61,19 +61,19 @@ export default function AdminTransactionsClient() {
       setAuthRequired(false); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   };
-  if (authRequired) return <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-slate-100">
+  if (authRequired) return <main className="grid min-h-[70vh] place-items-center bg-canvas px-5 text-ink">
     <form onSubmit={authenticate} className="panel w-full max-w-md p-8">
-      <p className="eyebrow">GoBook Admin</p><h1 className="mt-3 text-3xl font-semibold">Đăng nhập Admin</h1>
-      <input name="email" type="email" required className="input mt-6" placeholder="Email" />
-      <input name="password" type="password" required className="input mt-3" placeholder="Mật khẩu" />
-      {error && <p role="alert" className="mt-4 text-rose-300">{error}</p>}
+      <p className="eyebrow">GoBook Admin</p><h1 className="mt-3 text-3xl font-bold">Đăng nhập Admin</h1>
+      <input name="email" type="email" aria-label="Email" autoComplete="username" required className="input mt-6" placeholder="Email" />
+      <input name="password" type="password" aria-label="Mật khẩu" autoComplete="current-password" required className="input mt-3" placeholder="Mật khẩu" />
+      {error && <p role="alert" className="mt-4 text-danger">{error}</p>}
       <button className="primary-button mt-6 w-full" disabled={busy}>Đăng nhập</button>
     </form></main>;
-  return <main className="min-h-screen bg-slate-950 text-slate-100"><div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
-    <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-8">
-      <div><p className="eyebrow">GoBook Admin · read-only</p><h1 className="mt-3 text-4xl font-semibold">Transactions</h1>
-        <p className="mt-2 text-sm text-slate-400">Điều tra Payment, Attempt và Refund. Mặc định 30 ngày gần nhất.</p></div>
-      <div className="flex gap-2"><Link className="secondary-button" href="/admin/vendor-applications">Vendor Applications</Link>
+  return <main className="min-h-[70vh] bg-canvas text-ink"><div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
+    <header className="flex flex-wrap items-end justify-between gap-5 border-b border-line/10 pb-8">
+      <div><p className="eyebrow">Quản trị · Chỉ xem</p><h1 className="mt-3 text-4xl font-bold">Giao dịch & thanh toán</h1>
+        <p className="mt-2 text-sm text-muted">Điều tra Payment, Attempt và Refund. Mặc định 30 ngày gần nhất.</p></div>
+      <div className="flex gap-2"><Link className="secondary-button" href="/admin/vendor-applications">Hồ sơ đối tác</Link>
         <Link className="secondary-button" href="/">Trang chủ</Link></div>
     </header>
     <form onSubmit={submit} className="panel mt-8 grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Bộ lọc giao dịch">
@@ -99,9 +99,9 @@ export default function AdminTransactionsClient() {
         onChange={(event) => setDraft({ ...draft, provider: event.target.value })}>
         <option value="">Mọi Provider</option><option value="SEPAY">SEPAY</option>
       </select>
-      <label className="text-sm text-slate-400">Từ ngày <input className="input mt-1" type="datetime-local" value={localDateTime(draft.from)}
+      <label className="text-sm text-muted">Từ ngày <input className="input mt-1" type="datetime-local" value={localDateTime(draft.from)}
         onChange={(event) => setDraft({ ...draft, from: event.target.value ? new Date(event.target.value).toISOString() : "" })} /></label>
-      <label className="text-sm text-slate-400">Đến ngày <input className="input mt-1" type="datetime-local" value={localDateTime(draft.to)}
+      <label className="text-sm text-muted">Đến ngày <input className="input mt-1" type="datetime-local" value={localDateTime(draft.to)}
         onChange={(event) => setDraft({ ...draft, to: event.target.value ? new Date(event.target.value).toISOString() : "" })} /></label>
       <div className="flex flex-wrap gap-3 sm:col-span-2 lg:col-span-4">
         <button className="primary-button" type="submit">Áp dụng bộ lọc</button>
@@ -112,25 +112,25 @@ export default function AdminTransactionsClient() {
         </select>
       </div>
     </form>
-    {error && <p role="alert" className="mt-5 text-rose-300">{error} <button className="underline" onClick={() => setFilters({ ...filters })}>Thử lại</button></p>}
+    {error && <p role="alert" className="mt-5 text-danger">{error} <button className="underline" onClick={() => setFilters({ ...filters })}>Thử lại</button></p>}
     {loading && <p role="status" className="mt-5">Đang tải giao dịch…</p>}
     {summary && <section className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Tổng quan giao dịch">
       {Object.entries(summary.byStatus).map(([status, value]) => <div key={status} className="panel p-5">
-        <p className="section-label">{status}</p><p className="mt-2 text-2xl font-semibold">{value.count}</p>
-        <p className="mt-1 text-sm text-slate-400">{amount(value.amount)}</p></div>)}
-      <p className="text-sm text-slate-400 sm:col-span-2 lg:col-span-4">Refund thành công: {summary.refunds.SUCCEEDED?.count ?? 0} · {amount(summary.refunds.SUCCEEDED?.amount ?? "0")} · Đang chờ: {summary.refunds.PENDING?.count ?? 0}</p>
+        <p className="section-label">{status}</p><p className="mt-2 text-2xl font-bold">{value.count}</p>
+        <p className="mt-1 text-sm text-muted">{amount(value.amount)}</p></div>)}
+      <p className="text-sm text-muted sm:col-span-2 lg:col-span-4">Refund thành công: {summary.refunds.SUCCEEDED?.count ?? 0} · {amount(summary.refunds.SUCCEEDED?.amount ?? "0")} · Đang chờ: {summary.refunds.PENDING?.count ?? 0}</p>
     </section>}
-    <section className="panel mt-8 overflow-x-auto" aria-label="Danh sách giao dịch">
-      <table className="w-full min-w-[900px] text-left text-sm"><thead className="border-b border-white/10 text-slate-400"><tr>
+    <section className="panel table-scroll responsive-records mt-8" tabIndex={0} role="region" aria-label="Danh sách giao dịch — cuộn ngang để xem đủ cột">
+      <table className="w-full min-w-[900px] text-left text-sm"><thead className="border-b border-line/10 text-muted"><tr>
         <th className="p-4">Thời gian</th><th className="p-4">Booking / khách hàng</th><th className="p-4">Payment</th>
         <th className="p-4">Attempt gần nhất</th><th className="p-4">Refund</th><th className="p-4">Số tiền</th></tr></thead>
-      <tbody>{list?.data.map((row) => <tr key={row.id} className="border-b border-white/5 align-top">
-        <td className="p-4">{date(row.createdAt)}</td><td className="p-4"><p>{row.bookingCode}</p><p className="text-slate-400">{row.customerEmail}</p></td>
-        <td className="p-4"><Link className="text-teal-300 underline" href={`/admin/transactions/${row.id}`}>{row.id.slice(0, 8)}…</Link><p>{row.status}</p></td>
-        <td className="p-4">{row.latestAttempt ? <><p>{row.latestAttempt.provider} · {row.latestAttempt.status}</p><p className="text-slate-400">{row.latestAttempt.merchantReference}</p></> : "—"}</td>
-        <td className="p-4">{row.refund.state}{row.refund.pendingAmount !== "0" && <p>Pending: {amount(row.refund.pendingAmount)}</p>}</td>
-        <td className="p-4">{amount(row.amount)}</td></tr>)}</tbody></table>
-      {!loading && list?.data.length === 0 && <p className="p-6 text-slate-400">Không có giao dịch phù hợp.</p>}
+      <tbody>{list?.data.map((row) => <tr key={row.id} className="border-b border-line/5 align-top">
+        <td data-label="Thời gian" className="p-4">{date(row.createdAt)}</td><td data-label="Đặt chỗ / khách hàng" className="p-4"><p>{row.bookingCode}</p><p className="text-muted">{row.customerEmail}</p></td>
+        <td data-label="Thanh toán" className="p-4"><Link className="text-info underline" href={`/admin/transactions/${row.id}`}>{row.id.slice(0, 8)}…</Link><p>{row.status}</p></td>
+        <td data-label="Lần thanh toán gần nhất" className="p-4">{row.latestAttempt ? <><p>{row.latestAttempt.provider} · {row.latestAttempt.status}</p><p className="text-muted">{row.latestAttempt.merchantReference}</p></> : "—"}</td>
+        <td data-label="Hoàn tiền" className="p-4">{row.refund.state}{row.refund.pendingAmount !== "0" && <p>Pending: {amount(row.refund.pendingAmount)}</p>}</td>
+        <td data-label="Số tiền" className="p-4">{amount(row.amount)}</td></tr>)}</tbody></table>
+      {!loading && list?.data.length === 0 && <p className="p-6 text-muted">Không có giao dịch phù hợp.</p>}
     </section>
     {list && <nav className="mt-5 flex items-center gap-3" aria-label="Phân trang giao dịch">
       <button className="secondary-button" disabled={list.page <= 1} onClick={() => setFilters({ ...filters, page: list.page - 1 })}>Trước</button>

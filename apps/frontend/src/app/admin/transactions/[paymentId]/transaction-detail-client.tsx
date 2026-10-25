@@ -31,38 +31,38 @@ export default function TransactionDetailClient({ paymentId }: { paymentId: stri
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [paymentId, token, setToken, retry]);
-  return <main className="min-h-screen bg-slate-950 text-slate-100"><div className="mx-auto max-w-5xl px-5 py-10 sm:px-8">
-    <Link href="/admin/transactions" className="text-teal-300 underline">← Danh sách giao dịch</Link>
-    <header className="mt-6 border-b border-white/10 pb-8"><p className="eyebrow">GoBook Admin · read-only</p>
-      <h1 className="mt-3 text-3xl font-semibold">Payment detail</h1><p className="mt-2 break-all text-slate-400">{paymentId}</p></header>
+  return <main className="min-h-[70vh] bg-canvas text-ink"><div className="mx-auto max-w-5xl px-5 py-10 sm:px-8">
+    <Link href="/admin/transactions" className="text-info underline">← Danh sách giao dịch</Link>
+    <header className="mt-6 border-b border-line/10 pb-8"><p className="eyebrow">Quản trị · Chỉ xem</p>
+      <h1 className="mt-3 text-3xl font-bold">Chi tiết giao dịch</h1><p className="mt-2 break-all text-muted">{paymentId}</p></header>
     {loading && <p role="status" className="mt-8">Đang tải chi tiết…</p>}
-    {error && <p role="alert" className="mt-8 text-rose-300">{error} <button className="underline" onClick={() => { setLoading(true); setError(null); setRetry(retry + 1); }}>Thử lại</button></p>}
+    {error && <p role="alert" className="mt-8 text-danger">{error} <button className="underline" onClick={() => { setLoading(true); setError(null); setRetry(retry + 1); }}>Thử lại</button></p>}
     {detail && <div className="mt-8 space-y-8">
-      <section className="panel grid gap-5 p-6 sm:grid-cols-2" aria-label="Payment và Booking">
+      <section className="panel p-6" aria-label="Payment và Booking"><dl className="grid gap-5 sm:grid-cols-2">
         <Info label="Booking" value={detail.booking.bookingCode} /><Info label="Booking status" value={detail.booking.status} />
         <Info label="Customer" value={detail.booking.customer.email} /><Info label="Vendor" value={detail.booking.vendor.displayName} />
         <Info label="Payment status" value={detail.status} /><Info label="Amount" value={amount(detail.amount)} />
         <Info label="Created" value={date(detail.createdAt)} /><Info label="Succeeded" value={date(detail.succeededAt)} />
         <Info label="Refund state" value={`${detail.refund.state} · thành công ${amount(detail.refund.succeededAmount)} · đang chờ ${amount(detail.refund.pendingAmount)}`} />
-      </section>
-      <section className="panel p-6" aria-label="Payment Attempts"><h2 className="text-xl font-semibold">Attempts ({detail.attempts.length})</h2>
-        {detail.attempts.length === 0 && <p className="mt-4 text-slate-400">Chưa có Attempt.</p>}
-        <div className="mt-5 space-y-4">{detail.attempts.map((item) => <article key={item.id} className="rounded-xl border border-white/10 p-4">
+      </dl></section>
+      <section className="panel p-6" aria-label="Payment Attempts"><h2 className="text-xl font-bold">Attempts ({detail.attempts.length})</h2>
+        {detail.attempts.length === 0 && <p className="mt-4 text-muted">Chưa có Attempt.</p>}
+        <div className="mt-5 space-y-4">{detail.attempts.map((item) => <article key={item.id} className="rounded-xl border border-line/10 p-4">
           <p className="font-medium">{item.provider} · {item.status} · {amount(item.amount)}</p>
-          <p className="mt-1 break-all text-sm text-slate-400">Reference: {item.merchantReference} · Provider ID: {item.providerTransactionId || "—"}</p>
-          <p className="mt-1 text-sm text-slate-400">Created: {date(item.createdAt)} · Succeeded: {date(item.succeededAt)} · Failed: {date(item.failedAt)}</p>
-          {item.failureCode && <p className="mt-2 text-sm text-rose-300">Failure code: {item.failureCode}</p>}</article>)}</div>
+          <p className="mt-1 break-all text-sm text-muted">Reference: {item.merchantReference} · Provider ID: {item.providerTransactionId || "—"}</p>
+          <p className="mt-1 text-sm text-muted">Created: {date(item.createdAt)} · Succeeded: {date(item.succeededAt)} · Failed: {date(item.failedAt)}</p>
+          {item.failureCode && <p className="mt-2 text-sm text-danger">Failure code: {item.failureCode}</p>}</article>)}</div>
       </section>
-      <section className="panel p-6" aria-label="Refunds"><h2 className="text-xl font-semibold">Refunds ({detail.refunds.length})</h2>
-        {detail.refunds.length === 0 && <p className="mt-4 text-slate-400">Chưa có Refund.</p>}
-        <div className="mt-5 space-y-4">{detail.refunds.map((item) => <article key={item.id} className="rounded-xl border border-white/10 p-4">
+      <section className="panel p-6" aria-label="Refunds"><h2 className="text-xl font-bold">Refunds ({detail.refunds.length})</h2>
+        {detail.refunds.length === 0 && <p className="mt-4 text-muted">Chưa có Refund.</p>}
+        <div className="mt-5 space-y-4">{detail.refunds.map((item) => <article key={item.id} className="rounded-xl border border-line/10 p-4">
           <p className="font-medium">{item.status} · {item.kind} · {amount(item.amount)}</p>
-          <p className="mt-1 text-sm text-slate-400">{item.reason}{item.reasonNote ? ` · ${item.reasonNote}` : ""}</p>
-          <p className="mt-1 text-sm text-slate-400">Requested: {date(item.requestedAt)} · Succeeded: {date(item.succeededAt)} · Cancelled: {date(item.cancelledAt)}</p></article>)}</div>
+          <p className="mt-1 text-sm text-muted">{item.reason}{item.reasonNote ? ` · ${item.reasonNote}` : ""}</p>
+          <p className="mt-1 text-sm text-muted">Requested: {date(item.requestedAt)} · Succeeded: {date(item.succeededAt)} · Cancelled: {date(item.cancelledAt)}</p></article>)}</div>
       </section>
-      <section className="panel p-6" aria-label="Timeline"><h2 className="text-xl font-semibold">Timeline</h2>
-        <ol className="mt-5 space-y-3">{detail.timeline.map((event, index) => <li key={`${event.reference}-${event.type}-${index}`} className="border-l-2 border-teal-500/40 pl-4">
-          <p>{event.type}</p><p className="text-sm text-slate-400">{date(event.at)} · {event.reference}</p></li>)}</ol>
+      <section className="panel p-6" aria-label="Timeline"><h2 className="text-xl font-bold">Timeline</h2>
+        <ol className="mt-5 space-y-3">{detail.timeline.map((event, index) => <li key={`${event.reference}-${event.type}-${index}`} className="border-l-2 border-line/40 pl-4">
+          <p>{event.type}</p><p className="text-sm text-muted">{date(event.at)} · {event.reference}</p></li>)}</ol>
       </section>
     </div>}
   </div></main>;

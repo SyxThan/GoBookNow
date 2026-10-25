@@ -43,11 +43,11 @@ export default function VendorBookingsClient() {
   });
   const applyFilters = (event: FormEvent) => { event.preventDefault(); setFilters(draft); setPage(1); };
   const error = query.error ?? services.error;
-  return <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 sm:px-8">
+  return <main className="min-h-[70vh] bg-canvas px-4 py-10 text-ink sm:px-8">
     <div className="mx-auto max-w-6xl">
       <p className="eyebrow">GoBook Vendor · Vận hành</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Quản lý Booking</h1>
-      <p className="mt-2 text-slate-400">Theo dõi lịch, trạng thái vé và khoản thu dự kiến của bạn.</p>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Quản lý Booking</h1>
+      <p className="mt-2 text-muted">Theo dõi lịch, trạng thái vé và khoản thu dự kiến của bạn.</p>
       <div className="mt-7"><OperationsNav current="bookings" /></div>
       <div role="tablist" aria-label="Trạng thái Booking" className="mb-6 flex flex-wrap gap-2">
         {TABS.map((tab) => <button key={tab.value} type="button" role="tab" aria-selected={status === tab.value}
@@ -55,45 +55,45 @@ export default function VendorBookingsClient() {
           className={status === tab.value ? "primary-button" : "secondary-button"}>{tab.label}</button>)}
       </div>
       <form onSubmit={applyFilters} className="panel mb-6 grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-5">
-        <label className="text-sm text-slate-300">Tìm mã / dịch vụ<input className="input mt-2" value={draft.search}
+        <label className="text-sm text-ink">Tìm mã / dịch vụ<input className="input mt-2" value={draft.search}
           onChange={(event) => setDraft({ ...draft, search: event.target.value })} placeholder="Mã Booking hoặc tên" maxLength={100} /></label>
-        <label className="text-sm text-slate-300">Dịch vụ / sự kiện<select className="input mt-2" value={draft.serviceId}
+        <label className="text-sm text-ink">Dịch vụ / sự kiện<select className="input mt-2" value={draft.serviceId}
           onChange={(event) => setDraft({ ...draft, serviceId: event.target.value })}>
           <option value="">Tất cả dịch vụ</option>{services.data?.items.map((service) => <option key={service.id} value={service.id}>{service.title}</option>)}
         </select></label>
-        <label className="text-sm text-slate-300">Từ ngày tạo<input className="input mt-2" type="date" value={draft.from}
+        <label className="text-sm text-ink">Từ ngày tạo<input className="input mt-2" type="date" value={draft.from}
           onChange={(event) => setDraft({ ...draft, from: event.target.value })} /></label>
-        <label className="text-sm text-slate-300">Đến ngày tạo<input className="input mt-2" type="date" value={draft.to}
+        <label className="text-sm text-ink">Đến ngày tạo<input className="input mt-2" type="date" value={draft.to}
           onChange={(event) => setDraft({ ...draft, to: event.target.value })} /></label>
         <div className="flex items-end gap-2"><button className="primary-button w-full" type="submit">Áp dụng</button>
           <button className="secondary-button" type="button" onClick={() => { setDraft(emptyFilters); setFilters(emptyFilters); setPage(1); }}>Xóa</button></div>
       </form>
-      <div className="mb-4 flex items-center justify-between gap-3 text-sm text-slate-400">
+      <div className="mb-4 flex items-center justify-between gap-3 text-sm text-muted">
         <span>{query.data ? `${query.data.pagination.total} Booking` : "Đang tải dữ liệu"}{query.isFetching && query.data ? " · Đang cập nhật…" : ""}</span>
-        <label>Sắp xếp <select className="ml-2 rounded-lg border border-slate-700 bg-slate-900 p-2" value={sort}
+        <label>Sắp xếp <select className="ml-2 rounded-lg border border-line bg-surface p-2" value={sort}
           onChange={(event) => { setSort(event.target.value as "asc" | "desc"); setPage(1); }}>
           <option value="desc">Mới nhất</option><option value="asc">Cũ nhất</option></select></label>
       </div>
-      {query.isPending && <div role="status" className="panel p-8 text-slate-400">Đang tải Booking…</div>}
-      {error && <div role="alert" className="panel p-8 text-rose-200">
+      {query.isPending && <div role="status" className="panel p-8 text-muted">Đang tải Booking…</div>}
+      {error && <div role="alert" className="panel p-8 text-danger">
         {error instanceof ApiError && error.status === 401 ? "Phiên đăng nhập đã hết hạn. " :
           error instanceof ApiError && error.status === 403 ? "Bạn cần hồ sơ Vendor đã được duyệt. " : "Không thể tải Booking. "}
         <Link className="underline" href="/vendor/profile">Mở hồ sơ / đăng nhập</Link>
         <button className="ml-4 underline" type="button" onClick={() => void query.refetch()}>Thử lại</button>
       </div>}
       {!query.isPending && !query.error && query.data?.data.length === 0 &&
-        <div className="panel p-10 text-center text-slate-400">Không có Booking nào trong bộ lọc này.</div>}
-      {!!query.data?.data.length && <div className="overflow-x-auto rounded-3xl border border-white/10">
-        <table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-900 text-slate-400"><tr>
+        <div className="panel p-10 text-center text-muted">Không có Booking nào trong bộ lọc này.</div>}
+      {!!query.data?.data.length && <div className="panel table-scroll responsive-records" role="region" tabIndex={0} aria-label="Bảng đặt chỗ — cuộn ngang để xem đủ cột">
+        <table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-surface text-muted"><tr>
           <th className="p-4">Booking</th><th className="p-4">Dịch vụ / lịch</th><th className="p-4">Số vé</th>
           <th className="p-4">Trạng thái</th><th className="p-4">Khách thanh toán</th><th className="p-4">Chi tiết</th>
-        </tr></thead><tbody>{query.data.data.map((booking) => <tr key={booking.bookingId} className="border-t border-white/10 align-top">
-          <td className="p-4"><strong>{booking.bookingCode}</strong><p className="mt-1 text-slate-500">{formatDateTime(booking.createdAt)}</p></td>
-          <td className="p-4"><p>{booking.itemCount} mục · {booking.itemsSummary.map((item) => item.serviceTitle).join(", ")}</p>
-            <p className="mt-1 text-slate-400">{booking.itemsSummary.length ? formatDateTime(booking.itemsSummary[0].startAt) : "—"}</p></td>
-          <td className="p-4">{booking.totalQuantity}</td><td className="p-4">{STATUS_LABEL[booking.operationalStatus] ?? booking.status}</td>
-          <td className="p-4">{formatMoney(booking.totalAmount, booking.currency)}</td>
-          <td className="p-4"><Link className="text-teal-300 hover:underline" href={`/vendor/bookings/${booking.bookingId}`}>Xem chi tiết</Link></td>
+        </tr></thead><tbody>{query.data.data.map((booking) => <tr key={booking.bookingId} className="border-t border-line/10 align-top">
+          <td data-label="Đặt chỗ" className="p-4"><strong>{booking.bookingCode}</strong><p className="mt-1 text-muted">{formatDateTime(booking.createdAt)}</p></td>
+          <td data-label="Dịch vụ / lịch" className="p-4"><p>{booking.itemCount} mục · {booking.itemsSummary.map((item) => item.serviceTitle).join(", ")}</p>
+            <p className="mt-1 text-muted">{booking.itemsSummary.length ? formatDateTime(booking.itemsSummary[0].startAt) : "—"}</p></td>
+          <td data-label="Số vé" className="p-4">{booking.totalQuantity}</td><td data-label="Trạng thái" className="p-4">{STATUS_LABEL[booking.operationalStatus] ?? booking.status}</td>
+          <td data-label="Khách thanh toán" className="p-4">{formatMoney(booking.totalAmount, booking.currency)}</td>
+          <td data-label="Chi tiết" className="p-4"><Link className="text-info hover:underline" href={`/vendor/bookings/${booking.bookingId}`}>Xem chi tiết</Link></td>
         </tr>)}</tbody></table>
       </div>}
       {query.data && query.data.pagination.totalPages > 1 && <div className="mt-6 flex items-center justify-center gap-4">

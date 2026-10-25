@@ -88,7 +88,7 @@ export default function QrScanner({
   }, [active, onCameraError, onDetected]);
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black">
+    <div className="relative overflow-hidden rounded-2xl border border-line/10 bg-black">
       <video
         ref={videoRef}
         aria-label="Camera quét mã QR"
@@ -96,8 +96,8 @@ export default function QrScanner({
         muted
         playsInline
       />
-      <div className="pointer-events-none absolute inset-[12%] rounded-3xl border-2 border-teal-300/80 shadow-[0_0_0_999px_rgba(2,6,23,0.38)]" />
-      <p className="absolute inset-x-4 bottom-4 rounded-full bg-slate-950/80 px-4 py-2 text-center text-xs text-slate-200 backdrop-blur">
+      <div className="pointer-events-none absolute inset-[12%] rounded-2xl border-2 border-sun shadow-[0_0_0_999px_rgba(2,6,23,0.38)]" />
+      <p className="absolute inset-x-4 bottom-4 rounded-full bg-canvas/80 px-4 py-2 text-center text-xs text-ink backdrop-blur">
         Đưa mã QR vào giữa khung
       </p>
     </div>

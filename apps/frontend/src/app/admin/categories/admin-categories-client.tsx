@@ -154,7 +154,7 @@ export default function AdminCategoriesClient() {
         accessToken,
         setAccessToken,
       );
-      setSuccess(editingId ? "Đã cập nhật category." : "Đã tạo category.");
+      setSuccess(editingId ? "Đã cập nhật danh mục." : "Đã tạo danh mục.");
       resetForm();
       await loadCategories(accessToken, scope, active, search);
     } catch (saveError) {
@@ -176,7 +176,7 @@ export default function AdminCategoriesClient() {
         setAccessToken,
       );
       setSuccess(
-        category.isActive ? "Đã ẩn category." : "Đã kích hoạt category.",
+        category.isActive ? "Đã ẩn danh mục." : "Đã kích hoạt danh mục.",
       );
       await loadCategories(accessToken, scope, active, search);
     } catch (toggleError) {
@@ -187,7 +187,7 @@ export default function AdminCategoriesClient() {
   }
 
   async function remove(category: Category) {
-    if (!window.confirm(`Soft-delete category “${category.name}”?`)) return;
+    if (!window.confirm(`Xóa danh mục “${category.name}”?`)) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -199,7 +199,7 @@ export default function AdminCategoriesClient() {
         setAccessToken,
       );
       if (editingId === category.id) resetForm();
-      setSuccess("Đã soft-delete category.");
+      setSuccess("Đã xóa danh mục.");
       await loadCategories(accessToken, scope, active, search);
     } catch (removeError) {
       setError(errorMessage(removeError));
@@ -232,14 +232,14 @@ export default function AdminCategoriesClient() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas text-ink">
       <div className="mx-auto max-w-7xl px-5 py-10 sm:px-8">
-        <header className="flex flex-wrap items-end justify-between gap-5 border-b border-white/10 pb-8">
+        <header className="flex flex-wrap items-end justify-between gap-5 border-b border-line/10 pb-8">
           <div>
             <p className="eyebrow">GoBook Admin</p>
-            <h1 className="mt-3 text-4xl font-semibold">Categories</h1>
-            <p className="mt-2 text-sm text-slate-400">
-              Master data cho Service và Event.
+            <h1 className="mt-3 text-4xl font-bold">Danh mục trải nghiệm</h1>
+            <p className="mt-2 text-sm text-muted">
+              Sắp xếp danh mục dịch vụ và sự kiện để khách khám phá dễ hơn.
             </p>
           </div>
           <div className="flex gap-2">
@@ -247,7 +247,7 @@ export default function AdminCategoriesClient() {
               href="/admin/vendor-applications"
               className="secondary-button"
             >
-              Vendor Applications
+              Hồ sơ đối tác
             </Link>
             <Link href="/" className="secondary-button">
               Trang chủ
@@ -258,11 +258,12 @@ export default function AdminCategoriesClient() {
         {error && <Banner tone="error">{error}</Banner>}
         {success && <Banner tone="success">{success}</Banner>}
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+        <div className="mt-8 grid gap-6 2xl:grid-cols-[1.35fr_0.65fr]">
           <section className="panel overflow-hidden">
-            <div className="grid gap-3 border-b border-white/10 p-5 sm:grid-cols-3">
+            <div className="grid gap-3 border-b border-line/10 p-5 sm:grid-cols-3">
               <select
                 className="input"
+                aria-label="Loại danh mục"
                 value={scope}
                 onChange={(event) => {
                   const value = event.target.value as "ALL" | Scope;
@@ -270,12 +271,13 @@ export default function AdminCategoriesClient() {
                   void loadCategories(accessToken, value, active, search);
                 }}
               >
-                <option value="ALL">All scopes</option>
-                <option value="SERVICE">SERVICE</option>
-                <option value="EVENT">EVENT</option>
+                <option value="ALL">Tất cả loại</option>
+                <option value="SERVICE">Dịch vụ</option>
+                <option value="EVENT">Sự kiện</option>
               </select>
               <select
                 className="input"
+                aria-label="Trạng thái danh mục"
                 value={active}
                 onChange={(event) => {
                   const value = event.target.value as typeof active;
@@ -283,9 +285,9 @@ export default function AdminCategoriesClient() {
                   void loadCategories(accessToken, scope, value, search);
                 }}
               >
-                <option value="ALL">All states</option>
-                <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
+                <option value="ALL">Tất cả trạng thái</option>
+                <option value="ACTIVE">Đang hiện</option>
+                <option value="INACTIVE">Đã ẩn</option>
               </select>
               <form
                 onSubmit={(event) => {
@@ -297,83 +299,83 @@ export default function AdminCategoriesClient() {
                   className="input"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Tìm code hoặc name"
+                  aria-label="Tìm danh mục" placeholder="Tìm mã hoặc tên danh mục"
                 />
               </form>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-4xl text-left text-sm">
-                <thead className="bg-slate-950 text-xs uppercase text-slate-500">
+            <div className="table-scroll responsive-records" role="region" tabIndex={0} aria-label="Bảng danh mục — cuộn ngang để xem đủ cột">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="bg-canvas text-xs uppercase text-muted">
                   <tr>
-                    <th className="px-5 py-4">Name</th>
-                    <th className="px-5 py-4">Code</th>
-                    <th className="px-5 py-4">Scope</th>
-                    <th className="px-5 py-4">Slug</th>
-                    <th className="px-5 py-4">Status</th>
-                    <th className="px-5 py-4">Order</th>
-                    <th className="px-5 py-4">Actions</th>
+                    <th className="px-5 py-4">Tên</th>
+                    <th className="px-5 py-4">Mã</th>
+                    <th className="px-5 py-4">Loại</th>
+                    <th className="px-5 py-4">Đường dẫn</th>
+                    <th className="px-5 py-4">Trạng thái</th>
+                    <th className="px-5 py-4">Thứ tự</th>
+                    <th className="px-5 py-4">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/10">
+                <tbody className="divide-y divide-line/10">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-5 py-8 text-slate-400">
+                      <td colSpan={7} className="px-5 py-8 text-muted">
                         Đang tải…
                       </td>
                     </tr>
                   ) : categories.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-5 py-8 text-slate-500">
-                        Không có category phù hợp.
+                      <td colSpan={7} className="px-5 py-8 text-muted">
+                        Không có danh mục phù hợp.
                       </td>
                     </tr>
                   ) : (
                     categories.map((category) => (
                       <tr key={category.id}>
-                        <td className="px-5 py-4 font-medium">
+                        <td data-label="Tên danh mục" className="px-5 py-4 font-medium">
                           {category.name}
                         </td>
-                        <td className="px-5 py-4 font-mono text-xs text-slate-400">
+                        <td data-label="Mã danh mục" className="px-5 py-4 font-mono text-xs text-muted">
                           {category.code}
                         </td>
-                        <td className="px-5 py-4">{category.scope}</td>
-                        <td className="px-5 py-4 text-slate-400">
+                        <td data-label="Loại" className="px-5 py-4">{category.scope}</td>
+                        <td data-label="Đường dẫn" className="px-5 py-4 text-muted">
                           {category.slug}
                         </td>
-                        <td className="px-5 py-4">
+                        <td data-label="Trạng thái" className="px-5 py-4">
                           <span
                             className={
                               category.isActive
-                                ? "text-teal-300"
-                                : "text-slate-500"
+                                ? "text-info"
+                                : "text-muted"
                             }
                           >
-                            {category.isActive ? "ACTIVE" : "INACTIVE"}
+                            {category.isActive ? "Đang hiện" : "Đã ẩn"}
                           </span>
                         </td>
-                        <td className="px-5 py-4">{category.sortOrder}</td>
-                        <td className="px-5 py-4">
+                        <td data-label="Thứ tự" className="px-5 py-4">{category.sortOrder}</td>
+                        <td data-label="Thao tác" className="px-5 py-4">
                           <div className="flex gap-2">
                             <button
                               className="secondary-button"
                               disabled={busy}
                               onClick={() => edit(category)}
                             >
-                              Edit
+                              Chỉnh sửa
                             </button>
                             <button
                               className="secondary-button"
                               disabled={busy}
                               onClick={() => void toggle(category)}
                             >
-                              {category.isActive ? "Hide" : "Activate"}
+                              {category.isActive ? "Ẩn" : "Hiển thị"}
                             </button>
                             <button
                               className="secondary-button"
                               disabled={busy}
                               onClick={() => void remove(category)}
                             >
-                              Delete
+                              Xóa
                             </button>
                           </div>
                         </td>
@@ -417,17 +419,17 @@ function CategoryForm({
   return (
     <form onSubmit={onSubmit} className="panel h-fit p-6">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">
-          {editing ? "Edit category" : "Create category"}
+        <h2 className="text-xl font-bold">
+          {editing ? "Chỉnh sửa danh mục" : "Tạo danh mục"}
         </h2>
         {editing && (
           <button type="button" className="secondary-button" onClick={onReset}>
-            Cancel
+            Hủy
           </button>
         )}
       </div>
-      <label className="mt-6 block text-sm text-slate-400">
-        Code
+      <label className="mt-6 block text-sm text-muted">
+        Mã
         <input
           className="input mt-2 font-mono"
           required
@@ -441,8 +443,8 @@ function CategoryForm({
           placeholder="SPA_BEAUTY"
         />
       </label>
-      <label className="mt-4 block text-sm text-slate-400">
-        Name
+      <label className="mt-4 block text-sm text-muted">
+        Tên
         <input
           className="input mt-2"
           required
@@ -452,8 +454,8 @@ function CategoryForm({
           onChange={(event) => onChange({ ...form, name: event.target.value })}
         />
       </label>
-      <label className="mt-4 block text-sm text-slate-400">
-        Scope
+      <label className="mt-4 block text-sm text-muted">
+        Loại
         <select
           className="input mt-2"
           value={form.scope}
@@ -461,12 +463,12 @@ function CategoryForm({
             onChange({ ...form, scope: event.target.value as Scope })
           }
         >
-          <option value="SERVICE">SERVICE</option>
-          <option value="EVENT">EVENT</option>
+          <option value="SERVICE">Dịch vụ</option>
+          <option value="EVENT">Sự kiện</option>
         </select>
       </label>
-      <label className="mt-4 block text-sm text-slate-400">
-        Description
+      <label className="mt-4 block text-sm text-muted">
+        Mô tả
         <textarea
           className="input mt-2"
           rows={3}
@@ -478,8 +480,8 @@ function CategoryForm({
         />
       </label>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-        <label className="block text-sm text-slate-400">
-          Icon
+        <label className="block text-sm text-muted">
+          Biểu tượng
           <input
             className="input mt-2"
             maxLength={100}
@@ -489,8 +491,8 @@ function CategoryForm({
             }
           />
         </label>
-        <label className="block text-sm text-slate-400">
-          Sort order
+        <label className="block text-sm text-muted">
+          Thứ tự
           <input
             className="input mt-2"
             type="number"
@@ -504,10 +506,10 @@ function CategoryForm({
         </label>
       </div>
       <button className="primary-button mt-6 w-full" disabled={busy}>
-        {busy ? "Đang lưu…" : editing ? "Save changes" : "Create category"}
+        {busy ? "Đang lưu…" : editing ? "Lưu thay đổi" : "Tạo danh mục"}
       </button>
       {editing && (
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-muted">
           Code và slug được giữ ổn định sau khi tạo.
         </p>
       )}
@@ -525,12 +527,13 @@ function Login({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-slate-100">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas px-5 text-ink">
       <form onSubmit={onSubmit} className="panel w-full max-w-md p-8">
         <p className="eyebrow">GoBook Admin</p>
-        <h1 className="mt-3 text-3xl font-semibold">Đăng nhập Admin</h1>
+        <h1 className="mt-3 text-3xl font-bold">Đăng nhập Admin</h1>
         <input
           name="email"
+          aria-label="Email" autoComplete="username"
           type="email"
           required
           className="input mt-6"
@@ -538,6 +541,7 @@ function Login({
         />
         <input
           name="password"
+          aria-label="Mật khẩu" autoComplete="current-password"
           type="password"
           required
           className="input mt-3"
@@ -563,8 +567,8 @@ function Banner({
     <div
       className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${
         tone === "error"
-          ? "border-rose-400/30 bg-rose-400/10 text-rose-200"
-          : "border-teal-400/30 bg-teal-400/10 text-teal-100"
+          ? "border-danger/30 bg-coral/30 text-danger"
+          : "border-line/30 bg-sun/30 text-info"
       }`}
     >
       {children}

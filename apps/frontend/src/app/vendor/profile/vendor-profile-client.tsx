@@ -255,15 +255,15 @@ export default function VendorProfileClient() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas text-ink">
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:py-12">
-        <header className="flex flex-col gap-6 border-b border-white/10 pb-8 sm:flex-row sm:items-end sm:justify-between">
+        <header className="flex flex-col gap-6 border-b border-line/10 pb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="eyebrow">GoBook Workspace</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-5xl">
+            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-5xl">
               Hồ sơ Vendor
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base">
               Thông tin tổ chức được tách biệt với tài khoản cá nhân và là nền
               tảng cho quy trình xét duyệt Vendor.
             </p>
@@ -317,10 +317,10 @@ export default function VendorProfileClient() {
 
 function LoadingState() {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 text-slate-100">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas text-ink">
       <div className="text-center">
-        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-teal-300 border-t-transparent" />
-        <p className="text-sm text-slate-400">Đang tải hồ sơ Vendor…</p>
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-line border-t-transparent" />
+        <p className="text-sm text-muted">Đang tải hồ sơ Vendor…</p>
       </div>
     </main>
   );
@@ -336,14 +336,14 @@ function LoginState({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-6 py-12 text-slate-100">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas px-6 py-12 text-ink">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-8 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-line/10 bg-surface p-8 shadow-2xl"
       >
         <p className="eyebrow">GoBook Vendor</p>
-        <h1 className="mt-3 text-3xl font-semibold">Đăng nhập để tiếp tục</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-400">
+        <h1 className="mt-3 text-3xl font-bold">Đăng nhập để tiếp tục</h1>
+        <p className="mt-3 text-sm leading-6 text-muted">
           Dùng tài khoản CUSTOMER hoặc VENDOR để quản lý hồ sơ tổ chức.
         </p>
         <Field label="Email">
@@ -380,12 +380,12 @@ function LoginState({
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
-    <section className="mt-12 rounded-3xl border border-dashed border-slate-700 bg-slate-900/60 px-6 py-16 text-center">
-      <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-teal-300 text-2xl font-bold text-slate-950">
+    <section className="mt-12 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-16 text-center">
+      <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-sun text-2xl font-bold text-ink">
         V
       </div>
-      <h2 className="mt-6 text-2xl font-semibold">Tạo hồ sơ Vendor</h2>
-      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-400">
+      <h2 className="mt-6 text-2xl font-bold">Tạo hồ sơ Vendor</h2>
+      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
         Hồ sơ mới luôn bắt đầu ở trạng thái bản nháp và chưa tự động cấp quyền
         VENDOR.
       </p>
@@ -417,24 +417,24 @@ function VendorView({
       <div className="panel p-6 sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:justify-between">
           <div>
-            <span className="rounded-full bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-200">
+            <span className="rounded-full bg-sun/30 px-3 py-1 text-xs font-bold text-warning">
               {STATUS_LABELS[vendor.status]}
             </span>
-            <h2 className="mt-5 text-3xl font-semibold">
+            <h2 className="mt-5 text-3xl font-bold">
               {vendor.displayName}
             </h2>
-            <p className="mt-2 font-mono text-xs text-slate-500">
+            <p className="mt-2 font-mono text-xs text-muted">
               /{vendor.slug}
             </p>
           </div>
-          <button type="button" onClick={onEdit} className="light-button">
+          <button type="button" onClick={onEdit} className="light-button self-start">
             Chỉnh sửa
           </button>
         </div>
-        <p className="mt-8 whitespace-pre-wrap leading-7 text-slate-300">
+        <p className="mt-8 whitespace-pre-wrap leading-7 text-ink">
           {vendor.description || "Chưa có mô tả tổ chức."}
         </p>
-        <dl className="mt-10 grid gap-6 border-t border-white/10 pt-8 sm:grid-cols-2">
+        <dl className="mt-10 grid gap-6 border-t border-line/10 pt-8 sm:grid-cols-2">
           <Info label="Tên pháp lý" value={vendor.legalName} />
           <Info
             label="Loại hình"
@@ -459,7 +459,7 @@ function VendorView({
         </div>
         <div className="panel p-6">
           <h3 className="section-label">Địa chỉ</h3>
-          <p className="mt-5 leading-7 text-slate-200">
+          <p className="mt-5 leading-7 text-ink">
             {address || "Chưa cập nhật"}
           </p>
         </div>
@@ -472,7 +472,7 @@ function Info({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
       <dt className="section-label">{label}</dt>
-      <dd className="mt-1.5 text-sm text-slate-200">
+      <dd className="mt-1.5 text-sm text-ink">
         {value || "Chưa cập nhật"}
       </dd>
     </div>
@@ -709,9 +709,9 @@ function FormSection({
 }) {
   return (
     <section className="panel p-6 sm:p-8">
-      <div className="border-b border-white/10 pb-5">
-        <h2 className="text-xl font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-slate-400">{description}</p>
+      <div className="border-b border-line/10 pb-5">
+        <h2 className="text-xl font-bold">{title}</h2>
+        <p className="mt-1 text-sm text-muted">{description}</p>
       </div>
       <div className="mt-6 grid gap-5 md:grid-cols-2">{children}</div>
     </section>
@@ -731,7 +731,7 @@ function Field({
     <label
       className={`${wide ? "md:col-span-2 " : ""}mt-5 block first:mt-0 md:mt-0`}
     >
-      <span className="mb-2 block text-sm font-medium text-slate-200">
+      <span className="mb-2 block text-sm font-medium text-ink">
         {label}
       </span>
       {children}
@@ -748,8 +748,8 @@ function Banner({
 }) {
   const colors =
     tone === "error"
-      ? "border-rose-400/30 bg-rose-400/10 text-rose-200"
-      : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+      ? "border-danger/30 bg-coral/30 text-danger"
+      : "border-success/30 bg-mint/30 text-success";
   return (
     <div className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${colors}`}>
       {children}

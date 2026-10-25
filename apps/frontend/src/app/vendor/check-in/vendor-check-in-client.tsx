@@ -202,8 +202,8 @@ export default function VendorCheckInClient() {
 
   if (!hydrated) {
     return (
-      <main className="grid min-h-screen place-items-center bg-slate-950 text-slate-100">
-        <p className="text-sm text-slate-400">Đang mở máy quét…</p>
+      <main className="grid min-h-[70vh] place-items-center bg-canvas text-ink">
+        <p className="text-sm text-muted">Đang mở máy quét…</p>
       </main>
     );
   }
@@ -218,16 +218,16 @@ export default function VendorCheckInClient() {
     !currentToken && !validation && !checkInResult && !validating;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas text-ink">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-8 sm:py-10">
         <header className="mb-7">
           <p className="eyebrow">GoBook Vendor</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-5xl">
+          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-5xl">
             Check-in vé
           </h1>
-          <p className="mt-3 text-sm leading-6 text-slate-400">
-            Quét mã, kiểm tra thông tin rồi xác nhận check-in. Camera trên môi
-            trường triển khai cần HTTPS; localhost được hỗ trợ khi phát triển.
+          <p className="mt-3 text-sm leading-6 text-muted">
+            Quét mã, kiểm tra thông tin rồi xác nhận check-in. Cho phép sử dụng
+            camera để quét, hoặc dán mã vé vào ô bên dưới.
           </p>
         </header>
 
@@ -250,7 +250,7 @@ export default function VendorCheckInClient() {
               }}
               className="panel p-5 sm:p-6"
             >
-              <label className="block text-sm font-medium text-slate-200">
+              <label className="block text-sm font-medium text-ink">
                 Hoặc dán mã QR/token thủ công
                 <input
                   value={manualToken}
@@ -308,10 +308,10 @@ function VendorLogin({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-slate-100">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas px-5 text-ink">
       <form onSubmit={onSubmit} className="panel w-full max-w-md p-7">
         <p className="eyebrow">GoBook Vendor</p>
-        <h1 className="mt-3 text-3xl font-semibold">Đăng nhập để check-in</h1>
+        <h1 className="mt-3 text-3xl font-bold">Đăng nhập để check-in</h1>
         <label className="mt-7 block text-sm font-medium">
           Email
           <input name="email" type="email" required className="input mt-2" />
@@ -353,22 +353,22 @@ function ValidationState({
 
   return (
     <section
-      className={`rounded-3xl border p-6 sm:p-8 ${
+      className={`rounded-2xl border p-6 sm:p-8 ${
         eligible
-          ? "border-emerald-400/30 bg-emerald-400/10"
+          ? "border-success/30 bg-mint/30"
           : warning
-            ? "border-amber-300/30 bg-amber-300/10"
-            : "border-rose-400/30 bg-rose-400/10"
+            ? "border-warning/30 bg-sun/30"
+            : "border-danger/30 bg-coral/30"
       }`}
     >
       <p className="text-4xl" aria-hidden="true">
         {eligible ? "✓" : warning ? "⚠" : "×"}
       </p>
-      <h2 className="mt-4 text-2xl font-semibold">
+      <h2 className="mt-4 text-2xl font-bold">
         {REASON_MESSAGES[validation.reason]}
       </h2>
       {validation.ticket && validation.service && validation.slot && (
-        <dl className="mt-7 grid gap-5 rounded-2xl bg-slate-950/50 p-5 sm:grid-cols-2">
+        <dl className="mt-7 grid gap-5 rounded-2xl bg-canvas/50 p-5 sm:grid-cols-2">
           <Info label="Mã vé" value={validation.ticket.ticketCode} />
           <Info label="Trạng thái" value={validation.ticket.status} />
           <Info label="Dịch vụ / Sự kiện" value={validation.service.title} />
@@ -421,16 +421,16 @@ function SuccessState({
   onNext: () => void;
 }) {
   return (
-    <section className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-7 text-center sm:p-10">
-      <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-300 text-4xl font-bold text-slate-950">
+    <section className="rounded-2xl border border-success/30 bg-mint/30 p-7 text-center sm:p-10">
+      <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-mint text-4xl font-bold text-ink">
         ✓
       </div>
-      <h2 className="mt-6 text-3xl font-semibold">Check-in thành công</h2>
-      <p className="mt-3 font-mono text-lg text-emerald-100">
+      <h2 className="mt-6 text-3xl font-bold">Check-in thành công</h2>
+      <p className="mt-3 font-mono text-lg text-success">
         {result.ticket.ticketCode}
       </p>
-      <p className="mt-2 text-slate-300">{result.service.title}</p>
-      <p className="mt-1 text-sm text-slate-400">
+      <p className="mt-2 text-ink">{result.service.title}</p>
+      <p className="mt-1 text-sm text-muted">
         {formatDateTime(result.ticket.checkedInAt)}
       </p>
       <button
@@ -448,7 +448,7 @@ function Info({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className="section-label">{label}</dt>
-      <dd className="mt-1.5 text-sm text-slate-100">{value}</dd>
+      <dd className="mt-1.5 text-sm text-ink">{value}</dd>
     </div>
   );
 }
@@ -464,8 +464,8 @@ function StatusBanner({
     <div
       className={`mb-5 rounded-2xl border px-5 py-4 text-sm ${
         tone === "error"
-          ? "border-rose-400/30 bg-rose-400/10 text-rose-100"
-          : "border-amber-300/30 bg-amber-300/10 text-amber-100"
+          ? "border-danger/30 bg-coral/30 text-danger"
+          : "border-warning/30 bg-sun/30 text-warning"
       }`}
     >
       {children}
