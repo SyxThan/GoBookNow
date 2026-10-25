@@ -457,6 +457,22 @@ export async function login(email: string, password: string): Promise<string> {
   return ((await response.json()) as AccessTokenPayload).accessToken;
 }
 
+export async function registerCustomer(input: {
+  fullName: string;
+  email: string;
+  password: string;
+  phone?: string;
+}): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw await readError(response);
+  return ((await response.json()) as AccessTokenPayload).accessToken;
+}
+
 export async function logout(): Promise<void> {
   await fetch(`${API_BASE_URL}/auth/logout`, {
     method: "POST",

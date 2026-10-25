@@ -1,0 +1,55 @@
+name: Customer journey E2E
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [test/e2e]
+  workflow_dispatch:
+
+jobs:
+  customer-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: gobook_test_e2e
+        ports:
+          - 5434:5432
+        options: >-
+          --health-cmd="pg_isready -U test -d gobook_test_e2e"
+          --health-interval=2s --health-timeout=5s --health-retries=20
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5434/gobook_test_e2e?schema=public
+      INTEGRATION_TEST_ALLOW_CLEANUP: "1"
+      E2E_BASE_URL: http://127.0.0.1:3100
+      BACKEND_BASE_URL: http://127.0.0.1:3101
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Guard test DB, apply migrations and build isolated applications
+        run: pnpm test:e2e:prepare
+      - name: Install installed-version Chromium and OS dependencies
+        run: pnpm --filter frontend exec playwright install --with-deps chromium
+      - name: Run real Customer journey (starts and stops both HTTP servers)
+        run: pnpm test:e2e
+      - name: Upload sensitive synthetic test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-journey-diagnostics
+          path: |
+            apps/frontend/playwright-report/journey/
+            apps/frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

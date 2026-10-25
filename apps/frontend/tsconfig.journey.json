@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "target": "ES2022", "incremental": false },
+  "include": ["e2e/journey/**/*.ts", "playwright.journey.config.mts"],
+  "exclude": ["node_modules"]
+}

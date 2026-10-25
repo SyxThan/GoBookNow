@@ -12,6 +12,7 @@ on:
       - main
       - test/integration
       - test/payment-edge-cases
+      - test/e2e
 
 jobs:
   quality:
