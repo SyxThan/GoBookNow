@@ -1,38 +1,24 @@
-import { ValidationPipe } from '@nestjs/common';
+import './instrument.js';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import cookieParser from 'cookie-parser';
-import { AppModule, ObserveInstrument } from './app.module.js';
+import { AppModule } from './app.module.js';
 import { setupSwagger } from './swagger.js';
+import { configureHttp } from './security/configure-http.js';
+import { logger } from './observability/logger.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    instrument: ObserveInstrument,
+    bodyParser: false,
+    logger,
   });
   const configService = app.get(ConfigService);
-  const frontendOrigin = configService.getOrThrow<string>('FRONTEND_ORIGIN');
-
-  app.use(cookieParser());
-  app.enableCors({
-    origin: frontendOrigin,
-    credentials: true,
-  });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-  app.setGlobalPrefix('api/v1');
+  configureHttp(app);
+  app.enableShutdownHooks();
   const port = process.env.PORT ?? 3001;
-  const swaggerEnabled = setupSwagger(app, configService);
+  setupSwagger(app, configService);
 
   await app.listen(port);
 
-  console.log(`GoBook API: http://localhost:${port}/api/v1`);
-  if (swaggerEnabled) {
-    console.log(`GoBook API docs: http://localhost:${port}/api/v1/docs`);
-  }
+  logger.emit('info', 'application.ready');
 }
 await bootstrap();

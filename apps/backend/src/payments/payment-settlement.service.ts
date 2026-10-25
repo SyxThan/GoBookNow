@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { bindContext } from '../observability/context.js';
 import {
   BookingStatus,
   PaymentAttemptStatus,
@@ -181,16 +182,20 @@ export class PaymentSettlementService {
       return settled;
     });
 
+    bindContext({ bookingId: result.bookingId, paymentId: result.paymentId });
     if (result.outcome === 'CONFIRMED') {
       this.logger.log({
-        event: 'payment_booking_settled',
+        event: 'payment.succeeded',
         bookingId: result.bookingId,
         paymentId: result.paymentId,
         reservationCount: result.reservationCount,
       });
     } else if (result.outcome === 'RECONCILIATION_REQUIRED') {
       this.logger.warn({
-        event: 'payment_settlement_reconciliation',
+        event:
+          result.reason === 'BOOKING_EXPIRED'
+            ? 'payment.late_success'
+            : 'payment.reconciliation_required',
         bookingId: result.bookingId,
         paymentId: result.paymentId,
         reason: result.reason,

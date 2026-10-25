@@ -1,4 +1,6 @@
-import { type INestApplication, ValidationPipe } from '@nestjs/common';
+import { type INestApplication, type ModuleMetadata } from '@nestjs/common';
+import { configureHttp } from '../../../src/security/configure-http.js';
+import { HttpPlatformModule } from '../../../src/security/http-platform.module.js';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AuthModule } from '../../../src/auth/auth.module.js';
@@ -28,7 +30,9 @@ const checkout: PaymentCheckoutProvider = {
   }),
 };
 
-export function integrationSuite() {
+export function integrationSuite(
+  extraModules: NonNullable<ModuleMetadata['imports']> = [],
+) {
   let app: INestApplication;
   let prisma: PrismaService;
   let fixtures: FixtureFactory;
@@ -38,9 +42,11 @@ export function integrationSuite() {
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
         PrismaModule,
+        HttpPlatformModule,
         AuthModule,
         BookingsModule,
         PaymentsModule,
+        ...extraModules,
       ],
     })
       .overrideProvider(PAYMENT_CHECKOUT_PROVIDER)
@@ -49,15 +55,8 @@ export function integrationSuite() {
       .overrideProvider(BookingExpirationScheduler)
       .useValue({})
       .compile();
-    app = module.createNestApplication({ logger: false });
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app = module.createNestApplication({ logger: false, bodyParser: false });
+    configureHttp(app, false);
     await app.init();
     prisma = app.get(PrismaService);
     await prisma.$connect();

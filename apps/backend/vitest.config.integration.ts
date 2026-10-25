@@ -25,7 +25,7 @@ export default defineConfig({
       JWT_ACCESS_EXPIRES_IN: '15m',
       SEPAY_ENV: 'sandbox',
       SEPAY_IPN_SECRET: 'integration-only-ipn-secret',
-      TICKET_TOKEN_SECRET: 'integration-only-ticket-secret',
+      TICKET_TOKEN_SECRET: 'integration-only-ticket-secret-at-least-32-bytes',
       PLATFORM_COMMISSION_BPS: '1000',
       BOOKING_HOLD_TTL_MINUTES: '10',
       BOOKING_EXPIRATION_INTERVAL_SECONDS: '3600',

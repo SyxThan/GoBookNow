@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { AuthService } from '../auth.service.js';
 import type { CurrentUser, JwtPayload } from '../types/jwt-payload.type.js';
+import { bindContext } from '../../observability/context.js';
 
 type AuthenticatedRequest = Request & { user: CurrentUser };
 
@@ -39,7 +40,8 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const currentUser = await this.authService.getCurrentUser(payload.sub);
-    request.user = { ...currentUser, roles: payload.roles };
+    request.user = currentUser;
+    bindContext({ userId: currentUser.id });
     return true;
   }
 

@@ -13,6 +13,7 @@ on:
       - test/integration
       - test/payment-edge-cases
       - test/e2e
+      - chore/security-observability
 
 jobs:
   quality:
@@ -85,11 +86,20 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm --filter backend exec prisma generate
 
+      - name: Scan tracked source for accidental secrets
+        run: node scripts/check-secrets.mjs
+
       - name: Apply database migrations
         run: pnpm --filter backend exec prisma migrate deploy
 
       - name: Lint
         run: pnpm lint
+
+      - name: Typecheck applications and security/observability tests
+        run: |
+          pnpm --filter backend typecheck
+          # This script generates Next route helpers before running tsc.
+          pnpm --filter frontend typecheck
 
       - name: Test
         run: pnpm test
@@ -105,6 +115,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
+      redis-security:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=2s --health-timeout=5s --health-retries=20
       postgres:
         image: postgres:17-alpine
         env:
@@ -122,6 +139,7 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://test:test@127.0.0.1:5432/gobook_test?schema=public
       INTEGRATION_TEST_ALLOW_CLEANUP: "1"
+      SECURITY_TEST_REDIS_URL: redis://127.0.0.1:6380
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -131,9 +149,30 @@ jobs:
           cache: pnpm
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify dedicated security Redis is reachable from the runner
+        working-directory: apps/backend
+        run: |
+          node --input-type=module <<'NODE'
+          import { createClient } from 'redis';
+          const client = createClient({
+            url: process.env.SECURITY_TEST_REDIS_URL,
+            socket: { connectTimeout: 5000, reconnectStrategy: false },
+          });
+          client.on('error', () => {});
+          try {
+            await client.connect();
+            if (await client.ping() !== 'PONG') throw new Error();
+            console.log('Dedicated security Redis is ready on runner port 6380.');
+          } catch {
+            throw new Error('Integration Redis unavailable: check redis-security service and 6380:6379 port mapping.');
+          } finally {
+            if (client.isOpen) client.destroy();
+          }
+          NODE
       - name: Guard database, validate, generate and deploy clean migrations
         run: pnpm --filter backend test:integration:prepare
       - name: Run PostgreSQL integration suite
+        # Includes security + Redis + observability; no duplicate focused jobs.
         run: pnpm --filter backend test:integration
       - name: Repeat with shuffled test order
         run: pnpm --filter backend test:integration --sequence.shuffle --sequence.seed=20261022

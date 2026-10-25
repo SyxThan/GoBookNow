@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [test/e2e]
+    branches: [test/e2e, chore/security-observability]
   workflow_dispatch:
 
 jobs:

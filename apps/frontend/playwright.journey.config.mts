@@ -8,6 +8,9 @@ const frontend = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   testDir: "./e2e/journey",
   testMatch: "**/*.e2e.spec.ts",
+  // Backend fixtures are already compiled by tsc. Load them as native Node
+  // modules rather than applying Playwright's test-file module transform.
+  build: { external: ["**/dist-browser/**"] },
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,

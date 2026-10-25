@@ -34,7 +34,12 @@ function errorMessage(error: unknown): string {
     if (error.status === 403) return "Bạn không có quyền xem thanh toán này.";
     if (error.status === 404) return "Không tìm thấy thanh toán.";
   }
-  return "Không thể kết nối đến GoBook API. Vui lòng thử lại.";
+  return (
+    "Không thể kết nối đến GoBook API. Vui lòng thử lại." +
+    (error instanceof ApiError && error.requestId
+      ? ` Mã hỗ trợ: ${error.requestId}`
+      : "")
+  );
 }
 
 export function PaymentResultClient() {

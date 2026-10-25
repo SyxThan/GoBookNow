@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { createObserveModule } from '@nestjs/observe';
+import { SentryModule } from '@sentry/nestjs/setup';
+import { HttpPlatformModule } from './security/http-platform.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AdminTransactionsModule } from './admin-transactions/admin-transactions.module.js';
@@ -20,14 +21,14 @@ import { VendorApplicationsModule } from './vendor-applications/vendor-applicati
 import { VendorsModule } from './vendors/vendors.module.js';
 import { VendorOperationsModule } from './vendor-operations/vendor-operations.module.js';
 
-export const { ObserveModule, ObserveInstrument } = createObserveModule();
-
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
     PrismaModule,
+    HttpPlatformModule,
+    SentryModule.forRoot(),
     AdminTransactionsModule,
     AuthModule,
     AuditModule,
@@ -43,13 +44,6 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     VendorsModule,
     VendorOperationsModule,
     VendorApplicationsModule,
-    // Distributed tracing, auto-correlated logs, request/job metrics, error
-    // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'backend',
-    }),
   ],
   controllers: [AppController],
   providers: [AppService],

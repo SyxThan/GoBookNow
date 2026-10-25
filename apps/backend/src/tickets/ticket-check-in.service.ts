@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma, TicketStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import { bindContext } from '../observability/context.js';
+import { logger } from '../observability/logger.js';
 import type { TicketCheckInResultDto } from './dto/ticket-check-in.dto.js';
 import { TicketTokenService } from './ticket-token.service.js';
 import { TicketValidationReason } from './ticket-validation.constants.js';
@@ -59,7 +61,7 @@ export class TicketCheckInService {
     this.validation.assertVendorOwnership(preliminaryContext, vendorId);
     const bookingId = preliminaryContext.bookingItem.booking.id;
 
-    return this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.$transaction(async (transaction) => {
       const lockedBooking = await transaction.$queryRaw<LockedTicketRow[]>(
         Prisma.sql`
           SELECT "id"
@@ -127,6 +129,13 @@ export class TicketCheckInService {
 
       return this.result(context, now);
     });
+    bindContext({ bookingId });
+    logger.emit('info', 'ticket.checked_in', {
+      bookingId,
+      ticketId,
+      userId: input.actorUserId,
+    });
+    return result;
   }
 
   private async resolveTicketId(token: string): Promise<string> {

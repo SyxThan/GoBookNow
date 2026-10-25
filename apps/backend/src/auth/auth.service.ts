@@ -10,6 +10,8 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { Prisma, UserStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import { bindContext } from '../observability/context.js';
+import { logger } from '../observability/logger.js';
 import {
   authRelations,
   type UserWithAuthRelations,
@@ -145,10 +147,14 @@ export class AuthService {
       : await this.verifyDummyPassword(dto.password);
 
     if (!user || !passwordMatches) {
+      logger.emit('warn', 'auth.login.failed', {
+        reason: 'INVALID_CREDENTIALS',
+      });
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
     if (user.status !== UserStatus.ACTIVE || user.deletedAt !== null) {
+      logger.emit('warn', 'auth.login.failed', { reason: 'ACCOUNT_INACTIVE' });
       throw new ForbiddenException('Account is not active');
     }
 
@@ -160,6 +166,9 @@ export class AuthService {
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
+
+    bindContext({ userId: user.id });
+    logger.emit('info', 'auth.login.succeeded');
 
     return { body, refreshToken };
   }

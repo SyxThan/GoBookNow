@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { bindContext } from '../observability/context.js';
+import { logger } from '../observability/logger.js';
 import {
   ConflictException,
   ForbiddenException,
@@ -85,6 +87,13 @@ export class PaymentsService {
     bookingId: string,
   ): Promise<SepayPaymentResponseDto> {
     const context = await this.createOrReuseAttempt(customerId, bookingId);
+    bindContext({ bookingId, paymentId: context.paymentId });
+    logger.emit('info', 'payment.initiated', {
+      bookingId,
+      paymentId: context.paymentId,
+      amount: context.amount,
+      currency: context.currency,
+    });
     const checkout = await this.checkoutProvider.createCheckout({
       paymentId: context.paymentId,
       merchantReference: context.merchantReference,
@@ -135,6 +144,7 @@ export class PaymentsService {
     if (payment.booking.customerId !== customerId) {
       throw new ForbiddenException('Payment belongs to another customer');
     }
+    bindContext({ bookingId: payment.booking.id, paymentId: payment.id });
 
     return {
       id: payment.id,

@@ -1,8 +1,8 @@
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import cookieParser from 'cookie-parser';
+import { configureHttp } from '../../src/security/configure-http.js';
+import { HttpPlatformModule } from '../../src/security/http-platform.module.js';
 import { AuthModule } from '../../src/auth/auth.module.js';
 import { BookingsModule } from '../../src/bookings/bookings.module.js';
 import { CategoriesModule } from '../../src/categories/categories.module.js';
@@ -24,6 +24,7 @@ export async function createBrowserApplication() {
     imports: [
       ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
       PrismaModule,
+      HttpPlatformModule,
       AuthModule,
       BookingsModule,
       CategoriesModule,
@@ -45,17 +46,11 @@ export async function createBrowserApplication() {
       },
     })
     .compile();
-  const app = module.createNestApplication({ logger: ['error', 'warn'] });
-  app.use(cookieParser());
-  app.enableCors({ origin: process.env.E2E_BASE_URL, credentials: true });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-  app.setGlobalPrefix('api/v1');
+  const app = module.createNestApplication({
+    bodyParser: false,
+    logger: false,
+  });
+  configureHttp(app);
   await app.init();
   return app;
 }

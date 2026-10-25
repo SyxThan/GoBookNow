@@ -245,17 +245,17 @@ describe('Authorization (e2e)', () => {
     await expectGet('/authorization-test/customer-or-admin', 200, ADMIN_ID);
   });
 
-  it('uses roles from the signed access token identity', async () => {
+  it('uses current database roles instead of stale signed token roles', async () => {
     const vendorToken = await tokenFor(CUSTOMER_ID, [RoleCode.VENDOR]);
 
     await request(app.getHttpServer())
       .get('/api/v1/authorization-test/vendor')
       .auth(vendorToken, { type: 'bearer' })
-      .expect(200);
+      .expect(403);
     await request(app.getHttpServer())
       .get('/api/v1/authorization-test/customer')
       .auth(vendorToken, { type: 'bearer' })
-      .expect(403);
+      .expect(200);
   });
 
   it('allows self ownership and denies another user', async () => {

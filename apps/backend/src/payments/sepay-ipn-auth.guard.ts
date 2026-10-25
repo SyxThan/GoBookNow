@@ -7,6 +7,18 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
+import { logger } from '../observability/logger.js';
+
+export function validIpnSecret(
+  incoming: string | undefined,
+  expected: string | undefined,
+): boolean {
+  if (!incoming || !expected?.trim()) return false;
+  return timingSafeEqual(
+    createHash('sha256').update(incoming).digest(),
+    createHash('sha256').update(expected.trim()).digest(),
+  );
+}
 
 @Injectable()
 export class SepayIpnAuthGuard implements CanActivate {
@@ -20,17 +32,13 @@ export class SepayIpnAuthGuard implements CanActivate {
     if (
       !incomingSecret ||
       !expectedSecret ||
-      !this.secretsMatch(incomingSecret, expectedSecret)
+      !validIpnSecret(incomingSecret, expectedSecret)
     ) {
+      logger.emit('warn', 'payment.webhook.rejected');
       throw new UnauthorizedException('Invalid SePay IPN credentials');
     }
 
+    logger.emit('info', 'payment.webhook.received');
     return true;
-  }
-
-  private secretsMatch(incoming: string, expected: string): boolean {
-    const incomingDigest = createHash('sha256').update(incoming).digest();
-    const expectedDigest = createHash('sha256').update(expected).digest();
-    return timingSafeEqual(incomingDigest, expectedDigest);
   }
 }

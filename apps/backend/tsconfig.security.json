@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "src/security/**/*.ts",
+    "src/observability/**/*.ts",
+    "test/integration/security*.int-spec.ts",
+    "test/integration/observability.int-spec.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-browser"]
+}
