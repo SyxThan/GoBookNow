@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [test/e2e, chore/security-observability]
+    branches: [test/e2e, chore/security-observability, feat/frontend-neo-brutalism]
   workflow_dispatch:
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
         run: pnpm test:e2e:prepare
       - name: Install installed-version Chromium and OS dependencies
         run: pnpm --filter frontend exec playwright install --with-deps chromium
-      - name: Run real Customer journey (starts and stops both HTTP servers)
+      - name: Run real Customer, Vendor and Admin journeys on desktop and mobile
         run: pnpm test:e2e
       - name: Upload sensitive synthetic test artifacts
         if: always()

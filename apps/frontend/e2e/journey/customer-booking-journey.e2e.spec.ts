@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 
@@ -21,6 +22,8 @@ async function registerAndLogin(page: Page) {
     "form-action 'self' https://pay-sandbox.sepay.vn https://pay.sepay.vn",
   );
   expect(home?.headers()["x-powered-by"]).toBeUndefined();
+  if (page.viewportSize()!.width < 640)
+    await page.getByRole("button", { name: "Mở menu" }).click();
   await page
     .getByRole("link", { name: "Đăng ký khách hàng", exact: true })
     .click();
@@ -55,7 +58,13 @@ async function selectAndHold(page: Page, title: string, voucherCode?: string) {
   await page.getByRole("button", { name: "Tăng số lượng" }).click();
   await expect(page.getByLabel("Số lượng", { exact: true })).toHaveValue("2");
   await review(page, "service");
-  await page.getByRole("button", { name: /Tiếp tục/ }).click();
+  await page
+    .getByRole("button", {
+      name:
+        page.viewportSize()!.width < 1024 ? "Tiếp tục đến tóm tắt" : "Tiếp tục",
+      exact: true,
+    })
+    .click();
   if (voucherCode) {
     await page.getByLabel("Mã voucher", { exact: true }).fill(voucherCode);
     await page.getByRole("button", { name: "Áp dụng", exact: true }).click();
@@ -230,6 +239,7 @@ test("Customer can register, login, book and pay, then view issued QR tickets", 
         status: true,
         sequenceNo: true,
         issuedAt: true,
+        checkedInAt: true,
         tokenVersion: true,
       },
     });
@@ -291,9 +301,45 @@ test("Customer can register, login, book and pay, then view issued QR tickets", 
       return Array.from(bytes.subarray(0, 8));
     });
     expect(magic).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    // Decode the exact authenticated Blob shown by the UI at its native pixel
+    // size. Keep the signed credential in memory; never print or attach it.
+    const encodedPng = await image.evaluate(async (img: HTMLImageElement) => {
+      const bytes = new Uint8Array(await (await fetch(img.src)).arrayBuffer());
+      return btoa(
+        Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""),
+      );
+    });
+    const require = createRequire(
+      new URL("../../../backend/package.json", import.meta.url),
+    );
+    const { PNG } = require("pngjs") as {
+      PNG: {
+        sync: {
+          read: (bytes: Buffer) => {
+            data: Uint8Array;
+            width: number;
+            height: number;
+          };
+        };
+      };
+    };
+    const decode = require("jsqr") as (
+      pixels: Uint8ClampedArray,
+      width: number,
+      height: number,
+    ) => { data: string } | null;
+    const png = PNG.sync.read(Buffer.from(encodedPng, "base64"));
+    const decoded = decode(
+      new Uint8ClampedArray(png.data),
+      png.width,
+      png.height,
+    );
+    expect(decoded !== null, "Customer QR PNG must decode").toBe(true);
+    const qrToken = decoded!.data;
     await review(page, "qr");
     expect(new URL(page.url()).search).not.toMatch(/token|nonce|signature/i);
     await page.getByRole("button", { name: "Đóng mã QR", exact: true }).click();
+    return qrToken;
   }
   await test.step("Open authenticated Blob QR and reload without issuing more tickets", async () => {
     await viewQr();
@@ -302,6 +348,54 @@ test("Customer can register, login, book and pay, then view issued QR tickets", 
     expect(await ticketRows()).toEqual(tickets);
     expect(await domain.prisma.paymentAttempt.count()).toBe(1);
     expect(await domain.prisma.booking.count()).toBe(1);
+  });
+  await test.step("Vendor validates the decoded customer QR and checks in once", async () => {
+    const qrToken = await viewQr();
+    await domain.prisma.slot.update({
+      where: { id: catalog.slot.id },
+      data: {
+        startAt: new Date(Date.now() - 60000),
+        endAt: new Date(Date.now() + 3600000),
+      },
+    });
+    const operator = await domain.operator(
+      "VENDOR",
+      catalog.vendor.ownerUserId,
+    );
+    await page.goto("/login");
+    await page.getByLabel("Email", { exact: true }).fill(operator.email);
+    await page.getByLabel("Mật khẩu", { exact: true }).fill(operator.password);
+    await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+    await expect(page).toHaveURL(/\/services$/);
+    await page.goto("/vendor/check-in");
+    await page.getByLabel("Hoặc dán mã QR/token thủ công").fill(qrToken);
+    await page
+      .getByRole("button", { name: "Kiểm tra vé", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Xác nhận check-in", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Check-in thành công" }),
+    ).toBeVisible();
+    const checked = await ticketRows();
+    expect(checked.map((ticket) => ticket.status)).toEqual([
+      "CHECKED_IN",
+      "ISSUED",
+    ]);
+    expect(checked[0].checkedInAt).toBeTruthy();
+    await page.getByRole("button", { name: "Quét vé tiếp theo" }).click();
+    await page.getByLabel("Hoặc dán mã QR/token thủ công").fill(qrToken);
+    await page
+      .getByRole("button", { name: "Kiểm tra vé", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Vé đã được check-in." }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Xác nhận check-in", exact: true }),
+    ).toHaveCount(0);
+    expect(await ticketRows()).toEqual(checked);
   });
 });
 

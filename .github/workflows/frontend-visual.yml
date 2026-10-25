@@ -1,0 +1,36 @@
+name: Frontend visual and accessibility
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [feat/frontend-neo-brutalism]
+  workflow_dispatch:
+jobs:
+  visual:
+    # Baselines are reviewed on Windows Chromium. Keep rasterization consistent;
+    # Linux still runs the functional E2E suite with the real Nest backend.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:3201/api/v1
+      VISUAL_START_SERVER: "1"
+      pnpm_config_verify_deps_before_run: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter frontend exec playwright install chromium
+      - run: pnpm --filter frontend build
+      - name: Compare reviewed screenshots and run accessibility checks
+        run: pnpm --filter frontend exec playwright test --config playwright.visual.config.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-visual-diagnostics
+          path: apps/frontend/test-results/visual-runs/
+          retention-days: 7

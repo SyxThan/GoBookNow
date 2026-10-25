@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import * as argon2 from 'argon2';
 import { PrismaService } from '../../src/database/prisma/prisma.service.js';
 import { BookingExpirationService } from '../../src/bookings/expiration/booking-expiration.service.js';
 import { FixtureFactory } from '../integration/helpers/fixtures.js';
@@ -12,6 +13,34 @@ export async function createBrowserHarness() {
   const fixtures = new FixtureFactory(app, prisma);
   return {
     prisma,
+    async pendingApplication() {
+      const owner = await fixtures.createCustomer();
+      const vendor = await prisma.vendor.create({
+        data: {
+          ownerUserId: owner.id,
+          displayName: 'E2E Partner Review',
+          slug: `review-${randomUUID()}`,
+          status: 'PENDING',
+        },
+      });
+      const application = await prisma.vendorApplication.create({
+        data: { vendorId: vendor.id, status: 'PENDING' },
+      });
+      return { owner, vendor, application };
+    },
+    async operator(role: 'ADMIN' | 'VENDOR', vendorOwnerId?: string) {
+      const identity =
+        role === 'ADMIN'
+          ? await fixtures.createAdmin()
+          : { id: vendorOwnerId! };
+      if (!identity.id) throw new Error('Vendor operator needs a seeded owner');
+      const password = 'E2e-Operator-Password-2026';
+      const user = await prisma.user.update({
+        where: { id: identity.id },
+        data: { passwordHash: await argon2.hash(password) },
+      });
+      return { email: user.email, password };
+    },
     async reset() {
       await cleanTestDatabase(prisma);
       await ensureSystemRoles(prisma);

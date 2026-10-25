@@ -14,6 +14,7 @@ on:
       - test/payment-edge-cases
       - test/e2e
       - chore/security-observability
+      - feat/frontend-neo-brutalism
 
 jobs:
   quality:

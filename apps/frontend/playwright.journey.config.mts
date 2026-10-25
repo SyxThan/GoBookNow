@@ -34,7 +34,18 @@ export default defineConfig({
     // Screenshots + trace provide diagnostics without recording QR video.
     serviceWorkers: "block",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "mobile",
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 375, height: 812 },
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
+  ],
   webServer: [
     {
       command: "node dist-browser/test/browser/server.js",
