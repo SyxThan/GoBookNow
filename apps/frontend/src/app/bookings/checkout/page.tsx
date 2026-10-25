@@ -17,12 +17,12 @@ export default function BookingCheckoutPage() {
 
 function CheckoutSkeleton() {
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-12 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas px-5 py-12 text-ink">
       <div className="mx-auto max-w-5xl animate-pulse">
-        <div className="h-6 w-40 rounded bg-slate-800" />
+        <div className="h-6 w-40 rounded bg-soft" />
         <div className="mt-8 grid gap-7 lg:grid-cols-[1fr_340px]">
-          <div className="h-96 rounded-3xl bg-slate-900" />
-          <div className="h-72 rounded-3xl bg-slate-900" />
+          <div className="h-96 rounded-2xl bg-surface" />
+          <div className="h-72 rounded-2xl bg-surface" />
         </div>
       </div>
     </main>

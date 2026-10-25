@@ -44,6 +44,16 @@ const service: PublicServiceDetail = {
 };
 
 describe("booking selection components", () => {
+  it("supports arrow-key selection and a single tab stop for the slot group", () => {
+    const onSelect = vi.fn();
+    render(<BookingSlotSelector slots={[slot, { ...slot, id: "slot-b" }]} selectedSlotId={slot.id} onSelect={onSelect} />);
+    const options = screen.getAllByRole("radio");
+    expect(options[0]).toHaveAttribute("tabindex", "0");
+    expect(options[1]).toHaveAttribute("tabindex", "-1");
+    options[0].focus(); fireEvent.keyDown(options[0], { key: "ArrowRight" });
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: "slot-b" }));
+    expect(options[1]).toHaveFocus();
+  });
   it("renders and selects an available Slot with visible selected state", () => {
     const onSelect = vi.fn();
     const { rerender } = render(
@@ -123,7 +133,8 @@ describe("held booking", () => {
     expect(screen.getByText("GBK-TEST")).toBeVisible();
     expect(screen.getByText("120.000 ₫")).toBeVisible();
     expect(screen.getAllByText("240.000 ₫")).toHaveLength(2);
-    expect(screen.getByText("HELD")).toBeVisible();
+    expect(screen.getByText("Đang giữ chỗ")).toBeVisible();
+    expect(screen.getByText("Chờ thanh toán")).toBeVisible();
     expect(screen.getByText(/Giá đã được cập nhật/)).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Thanh toán với SePay" }),

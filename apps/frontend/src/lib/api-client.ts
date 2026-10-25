@@ -1,4 +1,5 @@
 import { reportUnexpected, validRequestId } from "./monitoring";
+import { rememberBooking } from "./recent-bookings";
 
 const correlation = () => ({ "X-Request-Id": crypto.randomUUID() });
 const API_BASE_URL =
@@ -512,11 +513,12 @@ export async function registerCustomer(input: {
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${API_BASE_URL}/auth/logout`, {
+  const response = await fetch(`${API_BASE_URL}/auth/logout`, {
     method: "POST",
     credentials: "include",
     headers: correlation(),
   });
+  if (!response.ok) throw await readError(response);
 }
 
 export async function apiRequest<T>(
@@ -578,7 +580,7 @@ export function createBookingHold(
     },
     accessToken,
     onToken,
-  );
+  ).then(result => { rememberBooking(result.id); return result; });
 }
 
 export type VoucherQuote = {
@@ -659,7 +661,7 @@ export function getPaymentResult(
     { method: "GET", signal },
     accessToken,
     onToken,
-  );
+  ).then(result => { rememberBooking(result.booking.id); return result; });
 }
 
 export function getBookingTickets(
@@ -673,7 +675,7 @@ export function getBookingTickets(
     { method: "GET", signal },
     accessToken,
     onToken,
-  );
+  ).then(result => { rememberBooking(result.bookingId); return result; });
 }
 
 export function getBookingReviewEligibility(

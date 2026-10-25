@@ -7,14 +7,14 @@ export function BookingExpiredState({
 }) {
   return (
     <section className="panel mx-auto max-w-2xl p-7 text-center sm:p-10" role="status">
-      <div className="mx-auto grid size-14 place-items-center rounded-full bg-amber-300/10 text-2xl text-amber-200">
+      <div className="mx-auto grid size-14 place-items-center rounded-full bg-sun/30 text-2xl text-warning">
         00
       </div>
       <p className="eyebrow mt-6">Reservation EXPIRED</p>
-      <h1 className="mt-3 text-3xl font-semibold text-white">
+      <h1 className="mt-3 text-3xl font-bold text-ink">
         Thời gian giữ chỗ đã hết.
       </h1>
-      <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-400">
+      <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted">
         Deadline từ backend đã qua nên thanh toán không còn khả dụng. Bạn có thể thử
         lại bằng một request mới hoặc chọn khung giờ khác.
       </p>

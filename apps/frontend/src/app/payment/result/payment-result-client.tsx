@@ -83,8 +83,8 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">!</StatusIcon>
         <p className="eyebrow mt-7">Liên kết không hợp lệ</p>
-        <h1 className="mt-3 text-3xl font-semibold">Thiếu mã thanh toán</h1>
-        <p className="mt-4 text-slate-400">
+        <h1 className="mt-3 text-3xl font-bold">Thiếu mã thanh toán</h1>
+        <p className="mt-4 text-muted">
           Liên kết kết quả thanh toán không chứa định danh cần thiết.
         </p>
         <ResultActions />
@@ -97,10 +97,10 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="pending" spinning />
         <p className="eyebrow mt-7">Đang xác minh</p>
-        <h1 className="mt-3 text-3xl font-semibold">
+        <h1 className="mt-3 text-3xl font-bold">
           Đang kiểm tra trạng thái thanh toán...
         </h1>
-        <p className="mt-4 text-slate-400">
+        <p className="mt-4 text-muted">
           GoBook đang đọc trạng thái trực tiếp từ hệ thống thanh toán.
         </p>
       </ResultShell>
@@ -112,10 +112,10 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">!</StatusIcon>
         <p className="eyebrow mt-7">Không thể xác minh</p>
-        <h1 className="mt-3 text-3xl font-semibold">
+        <h1 className="mt-3 text-3xl font-bold">
           Chưa đọc được trạng thái thanh toán
         </h1>
-        <p className="mt-4 text-slate-400">
+        <p className="mt-4 text-muted">
           {errorMessage(paymentQuery.error)}
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -144,8 +144,8 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="success">✓</StatusIcon>
         <p className="eyebrow mt-7">Hoàn tất</p>
-        <h1 className="mt-3 text-3xl font-semibold">Thanh toán thành công</h1>
-        <p className="mt-4 text-slate-300">Đặt chỗ của bạn đã được xác nhận.</p>
+        <h1 className="mt-3 text-3xl font-bold">Thanh toán thành công</h1>
+        <p className="mt-4 text-ink">Đặt chỗ của bạn đã được xác nhận.</p>
         {details}
         <ResultActions bookingId={payment.booking.id} />
       </ResultShell>
@@ -157,10 +157,10 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="success">✓</StatusIcon>
         <p className="eyebrow mt-7">Đã nhận thanh toán</p>
-        <h1 className="mt-3 text-3xl font-semibold">
+        <h1 className="mt-3 text-3xl font-bold">
           Hệ thống đang xác nhận đặt chỗ
         </h1>
-        <p className="mt-4 text-slate-300">
+        <p className="mt-4 text-ink">
           Đã nhận thanh toán. Hệ thống đang xử lý xác nhận đặt chỗ.
         </p>
         {details}
@@ -174,10 +174,10 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">!</StatusIcon>
         <p className="eyebrow mt-7">Cần kiểm tra trạng thái</p>
-        <h1 className="mt-3 text-3xl font-semibold">
+        <h1 className="mt-3 text-3xl font-bold">
           Đặt chỗ chưa thể xác nhận
         </h1>
-        <p className="mt-4 text-slate-300">
+        <p className="mt-4 text-ink">
           {payment.booking.status === "EXPIRED"
             ? "Đã ghi nhận thanh toán, nhưng đặt chỗ đã hết hạn. Khoản tiền đang chờ xử lý hoàn tiền."
             : "Thanh toán đã được ghi nhận nhưng đặt chỗ chưa thể xác nhận. Vui lòng kiểm tra lại trạng thái đặt chỗ."}
@@ -193,10 +193,10 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">×</StatusIcon>
         <p className="eyebrow mt-7">Đã hết hạn</p>
-        <h1 className="mt-3 text-3xl font-semibold">
+        <h1 className="mt-3 text-3xl font-bold">
           Phiên thanh toán đã hết hạn
         </h1>
-        <p className="mt-4 text-slate-400">
+        <p className="mt-4 text-muted">
           GoBook không còn chờ thanh toán cho phiên đặt chỗ này.
         </p>
         {details}
@@ -210,10 +210,10 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">×</StatusIcon>
         <p className="eyebrow mt-7">Đã hủy</p>
-        <h1 className="mt-3 text-3xl font-semibold">
+        <h1 className="mt-3 text-3xl font-bold">
           Thanh toán/đặt chỗ đã bị hủy
         </h1>
-        <p className="mt-4 text-slate-400">
+        <p className="mt-4 text-muted">
           Trạng thái từ GoBook cho biết phiên này đã bị hủy.
         </p>
         {details}
@@ -226,14 +226,14 @@ export function PaymentResultClient() {
     <ResultShell>
       <StatusIcon tone="pending" spinning />
       <p className="eyebrow mt-7">Đang chờ xác nhận</p>
-      <h1 className="mt-3 text-3xl font-semibold">
+      <h1 className="mt-3 text-3xl font-bold">
         {pollingTimedOut ? "Đang chờ xác nhận" : "Đang xác nhận thanh toán"}
       </h1>
-      <p className="mt-4 text-slate-400">
+      <p className="mt-4 text-muted">
         {returnHint === "success"
           ? "Trình duyệt đã quay lại, nhưng GoBook vẫn đang chờ xác nhận trực tiếp từ SePay."
           : returnHint === "cancel" || returnHint === "error"
-            ? "Trình duyệt đã quay lại từ SePay. GoBook vẫn kiểm tra trạng thái backend trước khi kết luận."
+            ? "Bạn đã quay lại từ SePay. GoBookNow đang kiểm tra kết quả thanh toán để xác nhận đặt chỗ."
             : "Giao dịch đang được hệ thống xác nhận."}
       </p>
       {details}
@@ -267,7 +267,7 @@ function usePollingTimeout(
 
 function PaymentDetails({ payment }: { payment: PaymentResult }) {
   return (
-    <div className="mt-8 grid gap-3 rounded-2xl border border-white/10 bg-slate-950/70 p-5 text-left sm:grid-cols-2">
+    <div className="mt-8 grid gap-3 rounded-2xl border border-line/10 bg-canvas/70 p-5 text-left sm:grid-cols-2">
       <Detail label="Số tiền">
         {formatMoney(payment.amount, payment.currency)}
       </Detail>
@@ -278,7 +278,7 @@ function PaymentDetails({ payment }: { payment: PaymentResult }) {
 
 function PollingNote({ timedOut }: { timedOut: boolean }) {
   return (
-    <p className="mt-5 text-sm text-slate-500" role="status">
+    <p className="mt-5 text-sm text-muted" role="status">
       {timedOut
         ? "Đang chờ xác nhận. Bạn có thể tải lại trang hoặc kiểm tra lại trạng thái đặt chỗ sau."
         : "Trang này tự kiểm tra lại sau mỗi 2,5 giây."}
@@ -288,10 +288,9 @@ function PollingNote({ timedOut }: { timedOut: boolean }) {
 
 function ResultShell({ children }: { children: ReactNode }) {
   return (
-    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-slate-950 px-5 py-12 text-slate-100">
-      <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-teal-400/10 blur-3xl" />
+    <main className="relative grid min-h-[70vh] place-items-center overflow-hidden bg-canvas px-5 py-12 text-ink">
       <section
-        className="panel relative w-full max-w-2xl p-7 text-center shadow-2xl shadow-black/30 sm:p-12"
+        className="panel relative w-full max-w-2xl p-7 text-center sm:p-12"
         aria-live="polite"
       >
         {children}
@@ -310,13 +309,13 @@ function StatusIcon({
   children?: ReactNode;
 }) {
   const colors = {
-    success: "border-emerald-300/30 bg-emerald-300/10 text-emerald-200",
-    pending: "border-teal-300/30 bg-teal-300/10 text-teal-200",
-    error: "border-rose-300/30 bg-rose-300/10 text-rose-200",
+    success: "border-success/30 bg-mint/30 text-success",
+    pending: "border-line/30 bg-sun/30 text-info",
+    error: "border-danger/30 bg-coral/30 text-danger",
   };
   return (
     <div
-      className={`mx-auto grid h-16 w-16 place-items-center rounded-full border text-3xl font-semibold ${colors[tone]}`}
+      className={`mx-auto grid h-16 w-16 place-items-center rounded-full border text-3xl font-bold ${colors[tone]}`}
       aria-hidden="true"
     >
       {spinning ? (
@@ -332,7 +331,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
       <p className="section-label">{label}</p>
-      <p className="mt-2 truncate text-sm font-medium text-slate-200">
+      <p className="mt-2 truncate text-sm font-medium text-ink">
         {children}
       </p>
     </div>
@@ -350,7 +349,7 @@ function ResultActions({ bookingId }: { bookingId?: string }) {
           Xem vé điện tử
         </Link>
       ) : null}
-      <Link href="/services" className="primary-button">
+      <Link href="/services" className="secondary-button">
         Xem dịch vụ
       </Link>
       <Link href="/" className="secondary-button">

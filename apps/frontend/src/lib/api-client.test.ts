@@ -6,10 +6,23 @@ import {
   getBookingTickets,
   getTicketQr,
   initiateSePayPayment,
+  logout,
   previewBookingCancellation,
   validateVendorTicket,
   validateVoucher,
 } from "./api-client";
+
+describe("logout acknowledgement", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("does not report success when the server could not revoke the session", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: "Unavailable" }), { status: 503 })));
+    await expect(logout()).rejects.toMatchObject({ status: 503 });
+  });
+  it("accepts an acknowledged logout without a response body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    await expect(logout()).resolves.toBeUndefined();
+  });
+});
 
 describe("createBookingHold", () => {
   afterEach(() => vi.unstubAllGlobals());

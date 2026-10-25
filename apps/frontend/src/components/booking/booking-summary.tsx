@@ -15,7 +15,7 @@ export function BookingSummary({
   return (
     <section className="panel p-5 sm:p-6" aria-labelledby="booking-summary-title">
       <p className="eyebrow">Kiểm tra lần cuối</p>
-      <h1 id="booking-summary-title" className="mt-3 text-2xl font-semibold text-white">
+      <h1 id="booking-summary-title" className="mt-3 text-2xl font-bold text-ink">
         Tóm tắt booking
       </h1>
       <dl className="mt-6 space-y-4 text-sm">
@@ -37,15 +37,15 @@ export function BookingSummary({
           value={`${formatMoney(slot.price.amount, slot.price.currency)} × ${quantity}`}
         />
       </dl>
-      <div className="mt-6 border-t border-white/10 pt-5">
+      <div className="mt-6 border-t border-line/10 pt-5">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-sm text-slate-400">Tổng dự kiến</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Backend sẽ xác nhận lại giá khi giữ chỗ.
+            <p className="text-sm text-muted">Tổng dự kiến</p>
+            <p className="mt-1 text-xs text-muted">
+              Giá và ưu đãi được xác nhận khi giữ chỗ.
             </p>
           </div>
-          <strong className="text-2xl text-teal-200">
+          <strong className="text-2xl text-info">
             {formatMoney(estimatedTotal, slot.price.currency)}
           </strong>
         </div>
@@ -56,9 +56,9 @@ export function BookingSummary({
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-6 border-b border-white/5 pb-3 last:border-0">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="text-right font-medium text-slate-200">{value}</dd>
+    <div className="flex justify-between gap-6 border-b border-line/5 pb-3 last:border-0">
+      <dt className="text-muted">{label}</dt>
+      <dd className="text-right font-medium text-ink">{value}</dd>
     </div>
   );
 }
