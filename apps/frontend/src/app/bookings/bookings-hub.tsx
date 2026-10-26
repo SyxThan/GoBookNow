@@ -6,7 +6,7 @@ import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getBookingTickets } from "@/lib/api-client";
 import { recentBookingIds } from "@/lib/recent-bookings";
-import { useVendorToken } from "@/app/vendor/use-vendor-token";
+import { usePortalSession } from "@gobook/auth/use-session";
 import {
   EmptyState,
   PageHeading,
@@ -16,7 +16,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 
 export function BookingsHub() {
-  const { ready, token, onToken } = useVendorToken();
+  const { ready, token, onToken } = usePortalSession();
   const router = useRouter();
   const [lookupError, setLookupError] = useState("");
   const query = useQuery({

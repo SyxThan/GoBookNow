@@ -23,20 +23,7 @@ function snapshot() {
     return null;
   }
 }
-const vendorLinks = [
-  ["/vendor/dashboard", "Tổng quan", "chart"],
-  ["/vendor/services", "Dịch vụ", "grid"],
-  ["/vendor/bookings", "Đặt chỗ", "calendar"],
-  ["/vendor/check-in", "Check-in vé", "ticket"],
-  ["/vendor/profile", "Hồ sơ đối tác", "user"],
-  ["/vendor/application", "Hồ sơ xét duyệt", "shield"],
-] as const;
-const adminLinks = [
-  ["/admin/transactions", "Giao dịch", "chart"],
-  ["/admin/vendor-applications", "Duyệt đối tác", "shield"],
-  ["/admin/categories", "Danh mục", "grid"],
-  ["/admin/vouchers", "Mã ưu đãi", "ticket"],
-] as const;
+const partnerUrl = `${process.env.NEXT_PUBLIC_VENDOR_URL ?? "http://localhost:3002"}/onboarding/application`;
 
 export function Brand() {
   return (
@@ -61,36 +48,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  // Decoding chooses navigation hints only. All authorization remains server-side.
-  let roles: string[] = [];
-  try {
-    const decoded: unknown = JSON.parse(
-      atob(
-        token?.split(".")[1]?.replaceAll("-", "+").replaceAll("_", "/") ?? "",
-      ),
-    );
-    if (
-      decoded &&
-      typeof decoded === "object" &&
-      "roles" in decoded &&
-      Array.isArray(decoded.roles)
-    )
-      roles = decoded.roles.filter(
-        (role): role is string => typeof role === "string",
-      );
-  } catch {
-    /* No identity is trusted from this hint. */
-  }
-  const workspace = pathname.startsWith("/admin")
-    ? "admin"
-    : pathname.startsWith("/vendor")
-      ? "vendor"
-      : null;
-  const account = roles.includes("ADMIN")
-    ? "/admin/transactions"
-    : roles.includes("VENDOR")
-      ? "/vendor/dashboard"
-      : "/bookings";
+  const account = "/bookings";
   async function signOut() {
     setBusy(true);
     setNotice("");
@@ -106,7 +64,6 @@ export function SiteShell({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }
-  const links = workspace === "admin" ? adminLinks : vendorLinks;
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -126,7 +83,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
               Khám phá
             </Link>
             <Link href="/#cach-dat">Cách đặt chỗ</Link>
-            <Link href="/vendor/profile">
+            <Link href={partnerUrl}>
               Dành cho đối tác <span aria-hidden="true">↗</span>
             </Link>
           </nav>
@@ -200,7 +157,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             {[
               ["/services", "Khám phá trải nghiệm"],
               ["/bookings", "Đặt chỗ & vé của tôi"],
-              ["/vendor/profile", "Dành cho đối tác"],
+              [partnerUrl, "Dành cho đối tác"],
               ...(token
                 ? [[account, "Tài khoản của bạn"]]
                 : [
@@ -231,53 +188,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
         </AccessibleDialog>
       )}
       <div id="main-content" tabIndex={-1} className="outline-none">
-        {workspace ? (
-          <div className="workspace">
-            <aside className="workspace-nav">
-              <p className="eyebrow mb-4 hidden lg:block">
-                {workspace === "admin"
-                  ? "GoBookNow · Quản trị"
-                  : "GoBookNow · Đối tác"}
-              </p>
-              <nav
-                aria-label={
-                  workspace === "admin" ? "Quản trị" : "Không gian đối tác"
-                }
-              >
-                {links.map(([href, label, icon]) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    aria-current={
-                      pathname === href || pathname.startsWith(href + "/")
-                        ? "page"
-                        : undefined
-                    }
-                    className="workspace-link"
-                  >
-                    <Icon name={icon} size={18} />
-                    {label}
-                  </Link>
-                ))}
-              </nav>
-              <div className="mt-10 hidden rounded-xl border-2 border-line bg-lavender p-4 lg:block">
-                <Icon name="ticket" size={28} />
-                <p className="mt-3 text-sm font-bold">
-                  Trải nghiệm tốt, bắt đầu từ bạn.
-                </p>
-                <Link
-                  href="/services"
-                  className="mt-3 inline-flex items-center gap-2 text-xs font-semibold underline"
-                >
-                  Xem trang khám phá <Icon name="arrow" size={15} />
-                </Link>
-              </div>
-            </aside>
-            <div className="workspace-content">{children}</div>
-          </div>
-        ) : (
-          children
-        )}
+        {children}
       </div>
       <footer className="border-t-2 border-line bg-surface">
         <div className="mx-auto flex max-w-7xl flex-col justify-between gap-8 px-6 py-10 md:flex-row">
@@ -293,7 +204,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           >
             <Link href="/services">Tìm trải nghiệm</Link>
             <Link href="/bookings">Đặt chỗ & vé</Link>
-            <Link href="/vendor/profile">Trở thành đối tác</Link>
+            <Link href={partnerUrl}>Trở thành đối tác</Link>
             <Link href="/#cach-dat">Hướng dẫn đặt chỗ</Link>
           </nav>
         </div>

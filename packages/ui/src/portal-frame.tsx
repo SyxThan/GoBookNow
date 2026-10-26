@@ -39,14 +39,16 @@ export function PortalFrame({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           {sessionActions}
-          <button
-            className="secondary-button lg:hidden"
-            aria-label="Mở điều hướng"
-            aria-expanded={open}
-            onClick={() => setOpen(true)}
-          >
-            <Icon name="menu" />
-          </button>
+          {navigation && (
+            <button
+              className="secondary-button lg:hidden"
+              aria-label="Mở điều hướng"
+              aria-expanded={open}
+              onClick={() => setOpen(true)}
+            >
+              <Icon name="menu" />
+            </button>
+          )}
         </div>
       </header>
       <div

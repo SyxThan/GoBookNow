@@ -1,8 +1,10 @@
 "use client";
 import Link from "next/link";
-import { PageHeading, StatusBadge } from "@gobook/ui/primitives";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button, PageHeading, StatusBadge } from "@gobook/ui/primitives";
 import { ResourceState, useWorkspaceQuery } from "@gobook/auth/resource";
 export default function OnboardingStatus() {
+  const cache = useQueryClient();
   const vendor = useWorkspaceQuery<{
     id: string;
     displayName: string;
@@ -10,7 +12,24 @@ export default function OnboardingStatus() {
   }>("/vendors/me", ["vendor-onboarding-status"]);
   return (
     <main className="page-wrap">
-      <PageHeading eyebrow="Hành trình đối tác" title="Trạng thái xét duyệt">
+      <PageHeading
+        eyebrow="Hành trình đối tác"
+        title="Trạng thái xét duyệt"
+        action={
+          <Button
+            variant="secondary"
+            loading={vendor.isFetching}
+            onClick={() =>
+              void Promise.all([
+                vendor.refetch(),
+                cache.invalidateQueries({ queryKey: ["portal-session"] }),
+              ])
+            }
+          >
+            Kiểm tra cập nhật
+          </Button>
+        }
+      >
         Theo dõi hồ sơ và hoàn thiện thông tin để bắt đầu kinh doanh.
       </PageHeading>
       {vendor.isError ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, login } from "@gobook/api-client";
 import { Button } from "@gobook/ui/primitives";
 import { setPortalToken } from "./use-session";
@@ -11,10 +11,12 @@ export function PortalLogin({
   title,
   description,
   destination,
+  footer,
 }: {
   title: string;
   description: string;
   destination: string;
+  footer?: ReactNode;
 }) {
   const router = useRouter(),
     params = useSearchParams();
@@ -92,6 +94,7 @@ export function PortalLogin({
             Đăng nhập
           </Button>
         </form>
+        {footer && <div className="mt-6 text-sm text-muted">{footer}</div>}
       </section>
     </main>
   );

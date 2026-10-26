@@ -24,7 +24,9 @@ export function ServiceForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [kind, setKind] = useState("");
-  const [categoryId, setCategoryId] = useState(data?.category?.id ?? data?.categoryId ?? "");
+  const [categoryId, setCategoryId] = useState(
+    data?.category?.id ?? data?.categoryId ?? "",
+  );
   const selectedKind = kind || data?.kind || "SERVICE";
   return (
     <form
@@ -57,7 +59,10 @@ export function ServiceForm({
             name="kind"
             className="input mt-2"
             defaultValue={data?.kind ?? "SERVICE"}
-            onChange={(e) => { setKind(e.target.value); setCategoryId(""); }}
+            onChange={(e) => {
+              setKind(e.target.value);
+              setCategoryId("");
+            }}
           >
             <option value="SERVICE">Dịch vụ</option>
             <option value="EVENT">Sự kiện</option>
