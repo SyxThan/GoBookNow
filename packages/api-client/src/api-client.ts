@@ -1,6 +1,10 @@
 import { reportUnexpected, validRequestId } from "./monitoring";
 import { rememberBooking } from "./recent-bookings";
-import { clearCheckoutDraft, clearHeldBooking, clearHoldAttempt } from "./booking-storage";
+import {
+  clearCheckoutDraft,
+  clearHeldBooking,
+  clearHoldAttempt,
+} from "./booking-storage";
 
 const PORTAL_KIND = process.env.NEXT_PUBLIC_PORTAL_KIND ?? "customer";
 const correlation = () => ({
@@ -94,6 +98,104 @@ export type PaymentResult = {
   };
   expiresAt: string | null;
 };
+
+export type CustomerBooking = {
+  id: string;
+  bookingCode: string;
+  bookingStatus: "PENDING_PAYMENT" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  displayStatus:
+    | "WAITING_PAYMENT"
+    | "WAITING_CONFIRMATION"
+    | "CONFIRMED"
+    | "EXPIRED"
+    | "CANCELLED"
+    | "REFUND_PENDING"
+    | "REFUND_COMPLETED";
+  createdAt: string;
+  expiresAt: string | null;
+  confirmedAt: string | null;
+  serverTime: string;
+  subtotalAmount: string;
+  voucherDiscountAmount: string;
+  totalAmount: string;
+  currency: string;
+  canInitiatePayment: boolean;
+  ticketCount: number;
+  items: Array<{
+    id: string;
+    serviceId: string;
+    serviceTitle: string;
+    slotStartAt: string;
+    slotEndAt: string;
+    quantity: number;
+    unitPriceAmount: string;
+    subtotalAmount: string;
+    voucherDiscountAmount: string;
+  }>;
+  paymentSummary: {
+    paymentId: string;
+    status: "PENDING" | "SUCCEEDED" | "EXPIRED" | "CANCELLED";
+    amount: string;
+    currency: string;
+    attemptStatus:
+      "PENDING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "EXPIRED" | null;
+    merchantReference: string | null;
+  } | null;
+  refunds: Array<{
+    id: string;
+    status: "PENDING" | "SUCCEEDED" | "CANCELLED";
+    kind: "PARTIAL" | "FULL";
+    reason: "BOOKING_CANCELLATION" | "MANUAL_ADJUSTMENT" | "SYSTEM_CORRECTION";
+    amount: string;
+    currency: string;
+    requestedAt: string;
+  }>;
+};
+
+export type CustomerBookingList = {
+  items: CustomerBooking[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  serverTime: string;
+};
+
+export function listMyBookings(
+  query: {
+    status?: CustomerBooking["bookingStatus"];
+    search?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  },
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  signal?: AbortSignal,
+): Promise<CustomerBookingList> {
+  const search = queryString(query);
+  return apiRequest(
+    `/bookings/me${search ? `?${search}` : ""}`,
+    { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
+}
+
+export function getMyBooking(
+  bookingId: string,
+  accessToken: string | null,
+  onToken: (token: string | null) => void,
+  signal?: AbortSignal,
+): Promise<CustomerBooking> {
+  return apiRequest(
+    `/bookings/${encodeURIComponent(bookingId)}`,
+    { method: "GET", signal },
+    accessToken,
+    onToken,
+  );
+}
 
 export type SePayInitiationResponse = {
   paymentId: string;
@@ -480,7 +582,9 @@ export function listPublicSlots(
   );
 }
 
-async function refreshAccessToken(signal?: AbortSignal | null): Promise<string> {
+async function refreshAccessToken(
+  signal?: AbortSignal | null,
+): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: "POST",
     credentials: "include",
@@ -599,7 +703,10 @@ export function createBookingHold(
     },
     accessToken,
     onToken,
-  ).then(result => { rememberBooking(result.id); return result; });
+  ).then((result) => {
+    rememberBooking(result.id);
+    return result;
+  });
 }
 
 export type VoucherQuote = {
@@ -680,7 +787,10 @@ export function getPaymentResult(
     { method: "GET", signal },
     accessToken,
     onToken,
-  ).then(result => { rememberBooking(result.booking.id); return result; });
+  ).then((result) => {
+    rememberBooking(result.booking.id);
+    return result;
+  });
 }
 
 export function getBookingTickets(
@@ -694,7 +804,10 @@ export function getBookingTickets(
     { method: "GET", signal },
     accessToken,
     onToken,
-  ).then(result => { rememberBooking(result.bookingId); return result; });
+  ).then((result) => {
+    rememberBooking(result.bookingId);
+    return result;
+  });
 }
 
 export function getBookingReviewEligibility(

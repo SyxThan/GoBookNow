@@ -5,6 +5,7 @@ import { RefundsModule } from '../refunds/refunds.module.js';
 import { BookingCodeService } from './booking-code.service.js';
 import { BookingsController } from './bookings.controller.js';
 import { BookingsService } from './bookings.service.js';
+import { CustomerBookingReadService } from './customer-booking-read.service.js';
 import { CancellationPolicyProvider } from './cancellation/cancellation-policy.provider.js';
 import { BookingCancellationService } from './cancellation/booking-cancellation.service.js';
 import { CapacityService } from './capacity.service.js';
@@ -25,6 +26,7 @@ import { VouchersService } from '../vouchers/vouchers.service.js';
   ],
   providers: [
     BookingsService,
+    CustomerBookingReadService,
     CapacityService,
     BookingCodeService,
     CancellationPolicyProvider,

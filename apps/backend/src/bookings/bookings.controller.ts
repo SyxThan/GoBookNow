@@ -2,11 +2,13 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -27,6 +29,8 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import type { CurrentUser } from '../auth/types/jwt-payload.type.js';
 import { SWAGGER_ACCESS_TOKEN_SECURITY } from '../swagger.js';
 import { BookingsService } from './bookings.service.js';
+import { CustomerBookingReadService } from './customer-booking-read.service.js';
+import { ListBookingsQueryDto } from './dto/list-bookings-query.dto.js';
 import { BookingResponseDto } from './dto/booking-response.dto.js';
 import { CreateBookingHoldDto } from './dto/create-booking-hold.dto.js';
 import {
@@ -44,8 +48,32 @@ import { BookingCancellationService } from './cancellation/booking-cancellation.
 export class BookingsController {
   constructor(
     private readonly bookings: BookingsService,
+    private readonly customerBookings: CustomerBookingReadService,
     private readonly cancellations: BookingCancellationService,
   ) {}
+
+  @Get('me')
+  @ApiOkResponse({
+    description: 'Paginated bookings owned by the authenticated customer.',
+  })
+  listMine(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Query() query: ListBookingsQueryDto,
+  ) {
+    return this.customerBookings.list(user.id, query);
+  }
+
+  @Get(':bookingId')
+  @ApiOkResponse({
+    description:
+      'Read-only customer-owned booking, payment, refund and ticket summary.',
+  })
+  detail(
+    @CurrentUserDecorator() user: CurrentUser,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+  ) {
+    return this.customerBookings.detail(user.id, bookingId);
+  }
 
   @Post('hold')
   @ApiHeader({
