@@ -108,7 +108,10 @@ test("Three browser origins retain independent identities through refresh and Ve
       "/onboarding/application",
     );
     await expect(
-      vendorPage.getByRole("heading", { name: "Đăng ký Vendor", exact: true }),
+      vendorPage.getByRole("heading", {
+        name: "Trở thành đối tác GoBookNow",
+        exact: true,
+      }),
     ).toBeVisible();
     await vendorPage.goto(`${process.env.VENDOR_E2E_BASE_URL}/dashboard`);
     await expect(

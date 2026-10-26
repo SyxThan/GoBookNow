@@ -48,11 +48,7 @@ test("Legacy URLs preserve resource IDs and list filters without transferring cr
   await page.goto("/");
   await expect(
     page
-      .locator(
-        'a[href="' +
-          process.env.VENDOR_E2E_BASE_URL +
-          '/onboarding/application"]',
-      )
+      .locator('a[href="' + process.env.VENDOR_E2E_BASE_URL + '/start"]')
       .first(),
   ).toBeAttached();
   await expect(
