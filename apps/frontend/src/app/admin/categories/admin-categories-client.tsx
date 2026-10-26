@@ -126,6 +126,7 @@ export default function AdminCategoriesClient() {
         String(data.get("password") ?? ""),
       );
       setAccessToken(token);
+      window.dispatchEvent(new Event("gobook:session"));
       await loadCategories(token, scope, active, search);
     } catch (loginError) {
       setError(errorMessage(loginError));

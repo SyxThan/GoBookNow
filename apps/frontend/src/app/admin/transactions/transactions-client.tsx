@@ -58,6 +58,7 @@ export default function AdminTransactionsClient() {
     event.preventDefault(); setBusy(true); setError(null);
     const data = new FormData(event.currentTarget);
     try { setToken(await login(String(data.get("email")), String(data.get("password"))));
+      window.dispatchEvent(new Event("gobook:session"));
       setAuthRequired(false); }
     catch (cause) { setError(failure(cause)); } finally { setBusy(false); }
   };

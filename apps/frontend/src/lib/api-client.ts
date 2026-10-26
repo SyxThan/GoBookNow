@@ -1,5 +1,6 @@
 import { reportUnexpected, validRequestId } from "./monitoring";
 import { rememberBooking } from "./recent-bookings";
+import { clearCheckoutDraft, clearHeldBooking, clearHoldAttempt } from "./booking-storage";
 
 const correlation = () => ({ "X-Request-Id": crypto.randomUUID() });
 const API_BASE_URL =
@@ -519,6 +520,17 @@ export async function logout(): Promise<void> {
     headers: correlation(),
   });
   if (!response.ok) throw await readError(response);
+  // Remove account-specific checkout snapshots only after session revocation is
+  // acknowledged. This never cancels or reprices the backend reservation.
+  if (typeof window !== "undefined") {
+    try {
+      clearHeldBooking(window.sessionStorage);
+      clearHoldAttempt(window.sessionStorage);
+      clearCheckoutDraft(window.sessionStorage);
+    } catch {
+      // Restricted storage must not undo an acknowledged logout.
+    }
+  }
 }
 
 export async function apiRequest<T>(

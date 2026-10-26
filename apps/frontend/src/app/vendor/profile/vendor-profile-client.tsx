@@ -203,6 +203,7 @@ export default function VendorProfileClient() {
         String(data.get("password") ?? ""),
       );
       setAccessToken(token);
+      window.dispatchEvent(new Event("gobook:session"));
       await loadVendor(token);
     } catch (loginError) {
       setError(errorMessage(loginError));
@@ -212,8 +213,15 @@ export default function VendorProfileClient() {
   };
 
   const handleLogout = async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      setError("Chưa thể đăng xuất. Vui lòng kiểm tra kết nối và thử lại.");
+      return;
+    }
+    setError(null);
     setAccessToken(null);
+    window.dispatchEvent(new Event("gobook:session"));
     setVendor(null);
     setAuthRequired(true);
     setNotice(null);
@@ -751,7 +759,7 @@ function Banner({
       ? "border-danger/30 bg-coral/30 text-danger"
       : "border-success/30 bg-mint/30 text-success";
   return (
-    <div className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${colors}`}>
+    <div role={tone === "error" ? "alert" : "status"} className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${colors}`}>
       {children}
     </div>
   );

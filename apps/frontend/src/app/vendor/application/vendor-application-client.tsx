@@ -143,6 +143,7 @@ export default function VendorApplicationClient() {
         String(data.get("password") ?? ""),
       );
       setAccessToken(token);
+      window.dispatchEvent(new Event("gobook:session"));
       await load(token);
     } catch (loginError) {
       setError(message(loginError));
@@ -152,8 +153,15 @@ export default function VendorApplicationClient() {
   }
 
   async function handleLogout() {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      setError("Chưa thể đăng xuất. Vui lòng kiểm tra kết nối và thử lại.");
+      return;
+    }
+    setError(null);
     setAccessToken(null);
+    window.dispatchEvent(new Event("gobook:session"));
     setVendor(null);
     setApplication(null);
     setAuthRequired(true);
@@ -546,6 +554,7 @@ function Banner({
 }) {
   return (
     <div
+      role={tone === "error" ? "alert" : "status"}
       className={`mt-6 rounded-2xl border px-5 py-4 text-sm ${tone === "error" ? "border-danger/30 bg-coral/30 text-danger" : "border-success/30 bg-mint/30 text-success"}`}
     >
       {children}

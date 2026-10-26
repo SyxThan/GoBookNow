@@ -194,6 +194,7 @@ export default function AdminVendorApplicationsClient() {
         String(data.get("password") ?? ""),
       );
       setAccessToken(token);
+      window.dispatchEvent(new Event("gobook:session"));
       await loadList(token, status, 1);
     } catch (loginError) {
       setError(message(loginError));

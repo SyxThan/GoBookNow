@@ -13,14 +13,21 @@ import {
 } from "./api-client";
 
 describe("logout acknowledgement", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); sessionStorage.clear(); });
   it("does not report success when the server could not revoke the session", async () => {
+    sessionStorage.setItem("gobook.bookingCheckout.held", "private-checkout");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: "Unavailable" }), { status: 503 })));
     await expect(logout()).rejects.toMatchObject({ status: 503 });
+    expect(sessionStorage.getItem("gobook.bookingCheckout.held")).toBe("private-checkout");
   });
   it("accepts an acknowledged logout without a response body", async () => {
+    const keys = ["gobook.bookingCheckout.held", "gobook.bookingCheckout.draft", "gobook.bookingHold.attempt"];
+    keys.forEach(key => sessionStorage.setItem(key, "private-checkout"));
+    sessionStorage.setItem("unrelated-preference", "kept");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
     await expect(logout()).resolves.toBeUndefined();
+    keys.forEach(key => expect(sessionStorage.getItem(key)).toBeNull());
+    expect(sessionStorage.getItem("unrelated-preference")).toBe("kept");
   });
 });
 

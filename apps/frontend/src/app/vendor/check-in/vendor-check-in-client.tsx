@@ -124,6 +124,7 @@ export default function VendorCheckInClient() {
         String(data.get("password") ?? ""),
       );
       setAccessToken(token);
+      window.dispatchEvent(new Event("gobook:session"));
       setAuthRequired(false);
     } catch (loginError) {
       setError(

@@ -582,6 +582,7 @@ export function BookingCheckoutClient() {
             <LoginPanel
               onSuccess={(token) => {
                 setAccessToken(token);
+                window.dispatchEvent(new Event("gobook:session"));
                 setShowLogin(false);
                 setState({ step: "SUMMARY" });
               }}

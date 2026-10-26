@@ -98,6 +98,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
       await logout();
       sessionStorage.removeItem(sessionKey);
       window.dispatchEvent(new Event("gobook:session"));
+      setMenuOpen(false);
       router.replace("/");
     } catch {
       setNotice("Chưa thể đăng xuất. Vui lòng kiểm tra kết nối và thử lại.");
