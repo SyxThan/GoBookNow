@@ -24,6 +24,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { portalCookieName } from './portal-cookie.js';
 import {
   SWAGGER_ACCESS_TOKEN_SECURITY,
   SWAGGER_REFRESH_COOKIE_SECURITY,
@@ -50,6 +52,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly refreshTokenService: RefreshTokenService,
+    private readonly config: ConfigService,
   ) {}
 
   @Post('register')
@@ -65,11 +68,12 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    this.cookieName(request);
     const result = await this.authService.register(
       dto,
       this.getSessionMetadata(request),
     );
-    this.setRefreshCookie(response, result.refreshToken);
+    this.setRefreshCookie(request, response, result.refreshToken);
     return result.body;
   }
 
@@ -87,11 +91,12 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
+    this.cookieName(request);
     const result = await this.authService.login(
       dto,
       this.getSessionMetadata(request),
     );
-    this.setRefreshCookie(response, result.refreshToken);
+    this.setRefreshCookie(request, response, result.refreshToken);
     return result.body;
   }
 
@@ -123,7 +128,7 @@ export class AuthController {
       rawToken,
       this.getSessionMetadata(request),
     );
-    this.setRefreshCookie(response, result.refreshToken);
+    this.setRefreshCookie(request, response, result.refreshToken);
     return result.body;
   }
 
@@ -138,7 +143,7 @@ export class AuthController {
   ): Promise<void> {
     await this.authService.logout(this.getRefreshCookie(request));
     response.clearCookie(
-      this.refreshTokenService.cookieName,
+      this.cookieName(request),
       this.refreshTokenService.clearCookieOptions,
     );
   }
@@ -156,9 +161,9 @@ export class AuthController {
     return user;
   }
 
-  private setRefreshCookie(response: Response, rawToken: string): void {
+  private setRefreshCookie(request: Request, response: Response, rawToken: string): void {
     response.cookie(
-      this.refreshTokenService.cookieName,
+      this.cookieName(request),
       rawToken,
       this.refreshTokenService.cookieOptions,
     );
@@ -166,7 +171,7 @@ export class AuthController {
 
   private getRefreshCookie(request: Request): string | undefined {
     const cookies = request.cookies as Record<string, unknown> | undefined;
-    const token = cookies?.[this.refreshTokenService.cookieName];
+    const token = cookies?.[this.cookieName(request)];
     return typeof token === 'string' && token.length > 0 ? token : undefined;
   }
 
@@ -175,5 +180,9 @@ export class AuthController {
       userAgent: request.get('user-agent')?.slice(0, 500) ?? null,
       ipAddress: request.ip?.slice(0, 64) ?? null,
     };
+  }
+
+  private cookieName(request: Request): string {
+    return portalCookieName(this.refreshTokenService.cookieName, request, this.config);
   }
 }

@@ -127,3 +127,17 @@
 }
 
 @source "./";
+
+/* Purpose-built operational shells; public discovery keeps the existing identity. */
+.portal-vendor { --primary: #a1e8c3; }
+.portal-admin { --primary: #cdb7ff; --shadow-brutal-sm: 2px 2px 0 var(--border); }
+.portal-topbar { position: sticky; top: 0; z-index: 40; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 24px; min-height:76px; background:var(--surface); border-bottom:2px solid var(--border); }
+.portal-layout { display:grid; grid-template-columns:238px minmax(0,1fr); min-height:calc(100dvh - 76px); max-width:1800px; margin:auto; }
+.portal-layout-public { display:block; }
+.portal-sidebar { position:sticky; top:76px; align-self:start; padding:28px 18px; max-height:calc(100dvh - 76px); overflow-y:auto; }
+.portal-main { min-width:0; border-left:1px solid #1d1d1d26; }
+.portal-layout-public .portal-main { border-left:0; }
+.portal-main .section-title { font-size:clamp(1.7rem,2.5vw,2.3rem); }
+.portal-admin .panel { box-shadow:2px 2px 0 var(--border); }
+@media(max-width:1023px) { .portal-layout { grid-template-columns:minmax(0,1fr); } .portal-main { border-left:0; } }
+@media(max-width:639px) { .portal-topbar { padding:12px 16px; } .portal-topbar .secondary-button { padding:8px 10px; font-size:12px; } .portal-topbar a { font-size:15px; } }

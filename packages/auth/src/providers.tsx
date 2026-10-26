@@ -15,7 +15,9 @@ export function Providers({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    const clear = () => queryClient.clear();
+    const clear = (event: Event) => {
+      if (!(event instanceof CustomEvent) || !event.detail?.sameIdentity) queryClient.clear();
+    };
     window.addEventListener("gobook:session", clear);
     return () => window.removeEventListener("gobook:session", clear);
   }, [queryClient]);

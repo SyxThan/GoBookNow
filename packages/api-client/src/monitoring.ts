@@ -18,7 +18,7 @@ export function sanitizeEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
     level: event.level,
     environment: event.environment,
     release: event.release,
-    tags: { service: "gobook-frontend" },
+    tags: { service: "gobook-frontend", app: process.env.NEXT_PUBLIC_PORTAL_KIND ?? "customer" },
     contexts: validRequestId(requestId) ? { application: { requestId } } : {},
     exception: {
       values: (event.exception?.values ?? []).map((error) => ({

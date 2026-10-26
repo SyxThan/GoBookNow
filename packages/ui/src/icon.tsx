@@ -19,6 +19,8 @@ const paths = {
   chart: "M4 3v18h17M9 16v-5m5 5V7m5 9V4",
 } as const;
 
+export type IconName = keyof typeof paths;
+
 export function Icon({
   name,
   size = 20,

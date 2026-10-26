@@ -6,7 +6,11 @@
   "exports": {
     "./resource": "./src/resource.tsx",
     "./providers": "./src/providers.tsx",
-    "./use-session": "./src/use-session.ts"
+    "./use-session": "./src/use-session.ts",
+    "./portal-guard": "./src/portal-guard.tsx",
+    "./portal-login": "./src/portal-login.tsx",
+    "./portal-logout": "./src/portal-logout.tsx",
+    "./return-path": "./src/return-path.ts"
   },
   "dependencies": {
     "@gobook/api-client": "workspace:*",

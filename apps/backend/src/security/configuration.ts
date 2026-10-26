@@ -4,8 +4,12 @@ import type { ConfigService } from '@nestjs/config';
 export function origins(config: ConfigService): string[] {
   const source =
     config.get<string>('CORS_ORIGINS') ??
-    config.get<string>('FRONTEND_ORIGIN') ??
-    (config.get('NODE_ENV') === 'production' ? '' : 'http://127.0.0.1:3000');
+    [
+      config.get<string>('FRONTEND_ORIGIN') ??
+        (config.get('NODE_ENV') === 'production' ? '' : 'http://127.0.0.1:3000'),
+      config.get<string>('VENDOR_ORIGIN'),
+      config.get<string>('ADMIN_ORIGIN'),
+    ].filter(Boolean).join(',');
   const result = source
     .split(',')
     .map((value) => value.trim())

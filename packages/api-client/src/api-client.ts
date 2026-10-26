@@ -2,7 +2,10 @@ import { reportUnexpected, validRequestId } from "./monitoring";
 import { rememberBooking } from "./recent-bookings";
 import { clearCheckoutDraft, clearHeldBooking, clearHoldAttempt } from "./booking-storage";
 
-const correlation = () => ({ "X-Request-Id": crypto.randomUUID() });
+const correlation = () => ({
+  "X-Request-Id": crypto.randomUUID(),
+  "X-Portal": process.env.NEXT_PUBLIC_PORTAL_KIND ?? "customer",
+});
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 

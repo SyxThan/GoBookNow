@@ -23,11 +23,11 @@ export function useWorkspaceRequest() {
   );
   return { ready, request };
 }
-export function useWorkspaceQuery<T>(path: string, key: readonly unknown[]) {
+export function useWorkspaceQuery<T>(path: string, key: readonly unknown[], enabled = true) {
   const { ready, request } = useWorkspaceRequest();
   const query = useQuery<T>({
     queryKey: key,
-    enabled: ready,
+    enabled: ready && enabled,
     staleTime: 0,
     queryFn: ({ signal }) => request<T>(path, { signal }),
   });
