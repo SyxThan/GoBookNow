@@ -18,8 +18,9 @@ describe('Cross-origin portal refresh sessions', () => {
     const passwordHash = await hash(password);
     const jar = new Map<string, string>();
     function saveCookies(response: request.Response) {
-      const values = response.headers['set-cookie'] as string[] | undefined;
-      for (const value of values ?? []) { const cookie = value.split(';')[0]!; jar.set(cookie.split('=')[0]!, cookie); }
+      const raw = response.headers['set-cookie'];
+      const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      for (const value of values) { const cookie = value.split(';')[0]!; jar.set(cookie.split('=')[0]!, cookie); }
     }
     const cookies = () => [...jar.values()].join('; ');
     for (const portal of ['customer', 'vendor', 'admin'] as const) {

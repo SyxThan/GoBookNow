@@ -362,12 +362,16 @@ test("Customer can register, login, book and pay, then view issued QR tickets", 
       "VENDOR",
       catalog.vendor.ownerUserId,
     );
-    await page.goto("/login");
+    await page.goto(`${process.env.VENDOR_E2E_BASE_URL}/login`);
     await page.getByLabel("Email", { exact: true }).fill(operator.email);
     await page.getByLabel("Mật khẩu", { exact: true }).fill(operator.password);
     await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-    await expect(page).toHaveURL(/\/services$/);
-    await page.goto("/vendor/check-in");
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto(`${process.env.VENDOR_E2E_BASE_URL}/bookings/${id}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: held.bookingCode }),
+    ).toBeVisible();
+    await page.goto(`${process.env.VENDOR_E2E_BASE_URL}/check-in`);
     await page.getByLabel("Hoặc dán mã QR/token thủ công").fill(qrToken);
     await page
       .getByRole("button", { name: "Kiểm tra vé", exact: true })
@@ -396,6 +400,27 @@ test("Customer can register, login, book and pay, then view issued QR tickets", 
       page.getByRole("button", { name: "Xác nhận check-in", exact: true }),
     ).toHaveCount(0);
     expect(await ticketRows()).toEqual(checked);
+  });
+  await test.step("Admin investigates the real successful payment without mutating it", async () => {
+    const operator = await domain.operator("ADMIN");
+    await page.goto(`${process.env.ADMIN_E2E_BASE_URL}/login`);
+    await page.getByLabel("Email", { exact: true }).fill(operator.email);
+    await page.getByLabel("Mật khẩu", { exact: true }).fill(operator.password);
+    await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+    await expect(page).toHaveURL(/\/vendor-applications$/);
+    await page.goto(
+      `${process.env.ADMIN_E2E_BASE_URL}/transactions/${paid.payment!.id}`,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Chi tiết giao dịch", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(held.bookingCode, { exact: true }),
+    ).toBeVisible();
+    const inspected = await domain.loadBooking(id);
+    expect(inspected.payment?.amount).toBe(held.totalAmount);
+    expect(inspected.payment?.status).toBe("SUCCEEDED");
+    expect(await domain.prisma.paymentAttempt.count()).toBe(1);
   });
 });
 

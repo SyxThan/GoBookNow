@@ -56,15 +56,31 @@ export default defineConfig({
       stdout: "pipe",
       stderr: "pipe",
     },
-    {
-      command: `pnpm start --hostname 127.0.0.1 --port ${new URL(process.env.E2E_BASE_URL!).port}`,
-      cwd: frontend,
-      url: `${process.env.E2E_BASE_URL}/register`,
-      env: { NODE_ENV: "production" },
+    ...[
+      [frontend, process.env.E2E_BASE_URL!, "CUSTOMER_PORT"],
+      [
+        path.resolve(frontend, "../vendor-portal"),
+        process.env.VENDOR_E2E_BASE_URL!,
+        "VENDOR_PORT",
+      ],
+      [
+        path.resolve(frontend, "../admin-console"),
+        process.env.ADMIN_E2E_BASE_URL!,
+        "ADMIN_PORT",
+      ],
+    ].map(([cwd, origin, variable]) => ({
+      command: "pnpm start",
+      cwd,
+      url: `${origin}/login`,
+      env: {
+        NODE_ENV: "production",
+        HOSTNAME: "127.0.0.1",
+        [variable]: new URL(origin).port,
+      },
       reuseExistingServer: false,
       timeout: 60_000,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
+      stdout: "pipe" as const,
+      stderr: "pipe" as const,
+    })),
   ],
 });

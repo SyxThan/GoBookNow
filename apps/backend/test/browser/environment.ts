@@ -4,11 +4,19 @@ import { assertIntegrationDatabase } from '../integration/helpers/test-environme
 export function loadBrowserEnvironment(): void {
   // Never load a developer .env. Existing explicit CI variables take precedence.
   config({ path: '.env.e2e', quiet: true });
-  const { frontend, backend } = assertBrowserTargets();
+  const { frontend, backend, vendor, admin } = assertBrowserTargets();
   Object.assign(process.env, {
     E2E_BASE_URL: frontend,
     BACKEND_BASE_URL: backend,
     FRONTEND_ORIGIN: frontend,
+    VENDOR_E2E_BASE_URL: vendor,
+    ADMIN_E2E_BASE_URL: admin,
+    VENDOR_ORIGIN: vendor,
+    ADMIN_ORIGIN: admin,
+    CORS_ORIGINS: [frontend, vendor, admin].join(","),
+    NEXT_PUBLIC_CUSTOMER_URL: frontend,
+    NEXT_PUBLIC_VENDOR_URL: vendor,
+    NEXT_PUBLIC_ADMIN_URL: admin,
     NEXT_PUBLIC_API_URL: `${backend}/api/v1`,
     NEXT_TELEMETRY_DISABLED: '1',
     JWT_ACCESS_SECRET: 'e2e-only-access-secret',
@@ -35,8 +43,10 @@ export function assertBrowserTargets(env: NodeJS.ProcessEnv = process.env) {
     throw new Error('Browser tests require their own gobook_test_e2e database');
   const frontend = localOrigin(env.E2E_BASE_URL ?? 'http://127.0.0.1:3100');
   const backend = localOrigin(env.BACKEND_BASE_URL ?? 'http://127.0.0.1:3101');
-  if (frontend === backend) throw new Error('Browser/API origins must differ');
-  return { frontend, backend };
+  const vendor = localOrigin(env.VENDOR_E2E_BASE_URL ?? 'http://127.0.0.1:3102');
+  const admin = localOrigin(env.ADMIN_E2E_BASE_URL ?? 'http://127.0.0.1:3103');
+  if (new Set([frontend, backend, vendor, admin]).size !== 4) throw new Error('All portal/API origins must differ');
+  return { frontend, backend, vendor, admin };
 }
 
 function localOrigin(value: string): string {

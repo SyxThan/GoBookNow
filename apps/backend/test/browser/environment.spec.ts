@@ -8,12 +8,16 @@ describe('Browser test target safety', () => {
     INTEGRATION_TEST_ALLOW_CLEANUP: '1',
     E2E_BASE_URL: 'http://127.0.0.1:3100',
     BACKEND_BASE_URL: 'http://127.0.0.1:3101',
+    VENDOR_E2E_BASE_URL: 'http://127.0.0.1:3102',
+    ADMIN_E2E_BASE_URL: 'http://127.0.0.1:3103',
   };
 
   it('accepts only an explicitly opted-in isolated database and loopback servers', () => {
     expect(assertBrowserTargets(safe)).toEqual({
       frontend: safe.E2E_BASE_URL,
       backend: safe.BACKEND_BASE_URL,
+      vendor: safe.VENDOR_E2E_BASE_URL,
+      admin: safe.ADMIN_E2E_BASE_URL,
     });
   });
 
@@ -39,6 +43,8 @@ describe('Browser test target safety', () => {
     { BACKEND_BASE_URL: 'https://api.example.invalid' },
     { E2E_BASE_URL: 'http://127.0.0.1:3100/redirect' },
     { BACKEND_BASE_URL: safe.E2E_BASE_URL },
+    { VENDOR_E2E_BASE_URL: safe.ADMIN_E2E_BASE_URL },
+    { ADMIN_E2E_BASE_URL: 'https://admin.example.invalid' },
   ])('rejects unsafe targets before setup or cleanup (%#)', (change) => {
     expect(() => assertBrowserTargets({ ...safe, ...change })).toThrow();
   });

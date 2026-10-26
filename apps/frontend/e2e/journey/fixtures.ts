@@ -65,6 +65,8 @@ export const test = base.extend<
     const allowed = new Set([
       process.env.E2E_BASE_URL!,
       process.env.BACKEND_BASE_URL!,
+      process.env.VENDOR_E2E_BASE_URL!,
+      process.env.ADMIN_E2E_BASE_URL!,
     ]);
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url());

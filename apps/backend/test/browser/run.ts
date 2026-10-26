@@ -28,19 +28,15 @@ if (command === 'prepare') {
   run('prisma', 'build/index.js', ['migrate', 'status']);
   run('typescript', 'bin/tsc', ['-p', 'tsconfig.browser.json']);
   // Next's production build expects NODE_ENV=production, independent of the DB guard.
-  const frontend = resolve('../frontend');
-  const frontendRequire = createRequire(join(frontend, 'package.json'));
-  const next = dirname(frontendRequire.resolve('next/package.json'));
-  const result = spawnSync(
-    process.execPath,
-    [join(next, 'dist/bin/next'), 'build'],
-    {
-      cwd: frontend,
-      stdio: 'inherit',
-      env: { ...process.env, NODE_ENV: 'production' },
-    },
-  );
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  for (const application of ['frontend', 'vendor-portal', 'admin-console']) {
+    const directory = resolve('..', application);
+    const appRequire = createRequire(join(directory, 'package.json'));
+    const next = dirname(appRequire.resolve('next/package.json'));
+    const result = spawnSync(process.execPath, [join(next, 'dist/bin/next'), 'build'], {
+      cwd: directory, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' },
+    });
+    if (result.status !== 0) process.exit(result.status ?? 1);
+  }
 } else if (command === 'test') {
   const frontendRequire = createRequire(resolve('../frontend/package.json'));
   const playwright = dirname(
