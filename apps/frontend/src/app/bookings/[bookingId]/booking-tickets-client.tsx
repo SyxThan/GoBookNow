@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import { AccessibleDialog } from "@/components/ui/dialog";
 import Link from "next/link";
 import {
   useCallback,
@@ -191,8 +192,8 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
     return (
       <PageShell>
         <p className="eyebrow">Không thể tải vé</p>
-        <h1 className="mt-3 text-3xl font-semibold">Vé chưa sẵn sàng</h1>
-        <p className="mt-4 text-slate-400">
+        <h1 className="mt-3 text-3xl font-bold">Vé chưa sẵn sàng</h1>
+        <p className="mt-4 text-muted">
           {ticketListError(ticketQuery.error)}
         </p>
         <button
@@ -209,20 +210,20 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
   const booking = ticketQuery.data;
 
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas px-5 py-10 text-ink">
       <div className="mx-auto max-w-5xl">
-        <Link href="/" className="text-sm text-teal-300 hover:text-teal-200">
+        <Link href="/" className="text-sm text-info hover:text-info">
           ← Trang chủ
         </Link>
         <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="eyebrow">Booking {booking.bookingCode}</p>
-            <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">
+            <h1 className="mt-3 text-3xl font-bold sm:text-4xl">
               Vé điện tử của bạn
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <p className="rounded-full border border-white/10 px-4 py-2 text-sm text-slate-300">
+            <p className="rounded-full border border-line/10 px-4 py-2 text-sm text-ink">
               {booking.tickets.length} vé
             </p>
             {booking.bookingStatus === "CONFIRMED" ? (
@@ -242,7 +243,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
         ) : null}
 
         {booking.tickets.length === 0 ? (
-          <section className="panel mt-8 p-8 text-center text-slate-400">
+          <section className="panel mt-8 p-8 text-center text-muted">
             Booking này chưa có vé được phát hành.
           </section>
         ) : (
@@ -263,7 +264,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
         <BookingReviewPanel bookingId={bookingId} accessToken={accessToken} onToken={setAccessToken} />
 
         {qrError && !selectedTicket ? (
-          <p className="mt-6 text-sm text-rose-300" role="alert">
+          <p className="mt-6 text-sm text-danger" role="alert">
             {qrError}
           </p>
         ) : null}
@@ -278,6 +279,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
           downloading={downloadingTicketId === selectedTicket.id}
           onClose={closeQr}
           onDownload={() => void downloadQr(selectedTicket)}
+          onRetry={() => void openQr(selectedTicket)}
         />
       ) : null}
       {cancellationOpen ? (
@@ -305,9 +307,9 @@ function CancellationSummary({
   cancellation: BookingCancellationResult;
 }) {
   return (
-    <section className="panel mt-8 border border-amber-300/20 p-6">
+    <section className="panel mt-8 border border-warning/20 p-6">
       <p className="eyebrow">Đặt chỗ đã hủy</p>
-      <h2 className="mt-2 text-xl font-semibold">Kết quả hoàn tiền</h2>
+      <h2 className="mt-2 text-xl font-bold">Kết quả hoàn tiền</h2>
       <div className="mt-5 grid gap-4 text-sm sm:grid-cols-3">
         <Detail label="Tổng ban đầu">
           {formatMoney(cancellation.originalAmount, cancellation.currency)}
@@ -323,12 +325,12 @@ function CancellationSummary({
         </Detail>
       </div>
       {cancellation.refund?.status === "PENDING" ? (
-        <p className="mt-5 rounded-xl bg-amber-300/10 p-4 text-sm text-amber-200">
+        <p className="mt-5 rounded-xl bg-sun/30 p-4 text-sm text-warning">
           Yêu cầu hoàn tiền đã được ghi nhận và đang chờ xử lý. Khoản tiền chưa
           được xác nhận là đã về tài khoản.
         </p>
       ) : cancellation.refundAmount === "0" ? (
-        <p className="mt-5 text-sm text-slate-300">
+        <p className="mt-5 text-sm text-ink">
           Chính sách áp dụng không có khoản hoàn tiền.
         </p>
       ) : null}
@@ -367,24 +369,18 @@ function CancellationDialog({
     !cancellation;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/90 p-5">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="cancellation-title"
-        className="panel my-8 w-full max-w-2xl p-6 shadow-2xl shadow-black/60 sm:p-8"
-      >
+    <AccessibleDialog labelledBy="cancellation-title" onClose={onClose} busy={cancellationPending} className="">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow">Xác nhận hủy</p>
-            <h2 id="cancellation-title" className="mt-2 text-2xl font-semibold">
+            <h2 id="cancellation-title" className="mt-2 text-2xl font-bold">
               Chính sách hủy đặt chỗ
             </h2>
           </div>
           <button
             type="button"
             aria-label="Đóng xác nhận hủy"
-            className="rounded-lg border border-white/10 px-3 py-2 text-slate-300 hover:text-white"
+            className="rounded-lg border border-line/10 px-3 py-2 text-ink hover:text-ink"
             disabled={cancellationPending}
             onClick={onClose}
           >
@@ -398,7 +394,7 @@ function CancellationDialog({
           </p>
         ) : previewError ? (
           <div className="mt-6">
-            <p className="text-rose-300" role="alert">
+            <p className="text-danger" role="alert">
               {cancellationErrorMessage(previewError)}
             </p>
             <button
@@ -411,7 +407,7 @@ function CancellationDialog({
           </div>
         ) : preview ? (
           <>
-            <div className="mt-6 grid gap-4 rounded-2xl bg-white/5 p-5 sm:grid-cols-3">
+            <div className="mt-6 grid gap-4 rounded-2xl bg-surface/5 p-5 sm:grid-cols-3">
               <Detail label="Tổng ban đầu">
                 {formatMoney(preview.originalAmount, preview.currency)}
               </Detail>
@@ -426,10 +422,10 @@ function CancellationDialog({
               {preview.items.map((item, index) => (
                 <div
                   key={item.bookingItemId}
-                  className="flex flex-wrap justify-between gap-3 border-b border-white/10 pb-3 text-sm"
+                  className="flex flex-wrap justify-between gap-3 border-b border-line/10 pb-3 text-sm"
                 >
                   <span>Hạng mục {index + 1}</span>
-                  <span className="text-slate-300">
+                  <span className="text-ink">
                     Hoàn {formatMoney(item.refundAmount, preview.currency)} ·
                     Phí {formatMoney(item.cancellationFeeAmount, preview.currency)}
                   </span>
@@ -437,27 +433,27 @@ function CancellationDialog({
               ))}
             </div>
             {preview.refundAmount === "0" && preview.cancellationAllowed ? (
-              <p className="mt-5 rounded-xl bg-amber-300/10 p-4 text-sm text-amber-200">
+              <p className="mt-5 rounded-xl bg-sun/30 p-4 text-sm text-warning">
                 Bạn vẫn có thể hủy, nhưng chính sách hiện tại không hoàn tiền.
               </p>
             ) : null}
             {!preview.cancellationAllowed ||
             preview.reason === "PARTIAL_CANCELLATION_REQUIRED" ? (
-              <p className="mt-5 rounded-xl bg-rose-300/10 p-4 text-sm text-rose-200">
+              <p className="mt-5 rounded-xl bg-coral/30 p-4 text-sm text-danger">
                 {preview.reason === "PARTIAL_CANCELLATION_REQUIRED"
                   ? "Một số hạng mục không thể hủy; GoBook hiện chưa hỗ trợ hủy từng phần."
                   : "Chính sách không cho phép hủy đặt chỗ này."}
               </p>
             ) : null}
-            <p className="mt-5 text-sm text-slate-400">
+            <p className="mt-5 text-sm text-muted">
               Đây là bản xem trước. Hệ thống sẽ tính lại bằng thời gian máy chủ
               khi bạn xác nhận, nên số tiền có thể thay đổi.
             </p>
             {canConfirm ? (
-              <label className="mt-5 block text-sm text-slate-300">
+              <label className="mt-5 block text-sm text-ink">
                 Lý do (không bắt buộc)
                 <textarea
-                  className="mt-2 min-h-20 w-full rounded-xl border border-white/10 bg-slate-900 p-3 text-slate-100"
+                  className="mt-2 min-h-20 w-full rounded-xl border border-line/10 bg-surface p-3 text-ink"
                   maxLength={500}
                   value={reasonNote}
                   onChange={(event) => onReasonNoteChange(event.target.value)}
@@ -468,7 +464,7 @@ function CancellationDialog({
         ) : null}
 
         {cancellationError ? (
-          <p className="mt-5 text-sm text-rose-300" role="alert">
+          <p className="mt-5 text-sm text-danger" role="alert">
             {cancellationErrorMessage(cancellationError)}
           </p>
         ) : null}
@@ -489,7 +485,7 @@ function CancellationDialog({
           {!cancellation ? (
             <button
               type="button"
-              className="primary-button"
+              className="danger-button"
               disabled={!canConfirm || cancellationPending}
               onClick={onConfirm}
             >
@@ -497,8 +493,7 @@ function CancellationDialog({
             </button>
           ) : null}
         </div>
-      </section>
-    </div>
+      </AccessibleDialog>
   );
 }
 
@@ -519,19 +514,19 @@ function TicketCard({
   const actionsEnabled = bookingConfirmed && ticket.status !== "VOIDED";
 
   return (
-    <article className="panel overflow-hidden p-6">
+    <article className="panel relative overflow-hidden border-l-[7px] border-l-electric p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="section-label">{ticket.bookingItem.serviceTitle}</p>
-          <h2 className="mt-2 text-xl font-semibold">{ticket.ticketCode}</h2>
+          <h2 className="mt-2 text-xl font-bold">{ticket.ticketCode}</h2>
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${status.className}`}
+          className={`rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
         >
           {status.label}
         </span>
       </div>
-      <div className="mt-6 grid grid-cols-2 gap-4 border-t border-white/10 pt-5 text-sm">
+      <div className="mt-6 grid grid-cols-2 gap-4 border-t border-line/10 pt-5 text-sm">
         <Detail label="Số vé">
           Vé {ticket.sequenceNo}/{ticket.bookingItem.quantity}
         </Detail>
@@ -546,12 +541,12 @@ function TicketCard({
         </Detail>
       </div>
       {ticket.status === "CHECKED_IN" && ticket.checkedInAt ? (
-        <p className="mt-4 text-xs text-slate-400">
+        <p className="mt-4 text-xs text-muted">
           Đã check-in lúc {formatTime(ticket.checkedInAt)}
         </p>
       ) : null}
       {!bookingConfirmed ? (
-        <p className="mt-4 text-sm text-amber-300">
+        <p className="mt-4 text-sm text-warning">
           Booking không còn ở trạng thái xác nhận; mã QR đã bị khóa.
         </p>
       ) : null}
@@ -587,6 +582,7 @@ function QrDialog({
   downloading,
   onClose,
   onDownload,
+  onRetry,
 }: {
   ticket: CustomerTicket;
   qrUrl: string | null;
@@ -595,39 +591,43 @@ function QrDialog({
   downloading: boolean;
   onClose: () => void;
   onDownload: () => void;
+  onRetry: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/85 p-5">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ticket-qr-title"
-        className="panel w-full max-w-xl p-6 text-center shadow-2xl shadow-black/60 sm:p-8"
-      >
+    <AccessibleDialog labelledBy="ticket-qr-title" onClose={onClose} className="text-center">
         <div className="flex items-start justify-between gap-4 text-left">
           <div>
             <p className="eyebrow">Mã QR vé</p>
-            <h2 id="ticket-qr-title" className="mt-2 text-2xl font-semibold">
+            <h2 id="ticket-qr-title" className="mt-2 text-2xl font-bold">
               {ticket.ticketCode}
             </h2>
           </div>
           <button
             type="button"
             aria-label="Đóng mã QR"
-            className="rounded-lg border border-white/10 px-3 py-2 text-slate-300 hover:text-white"
+            className="rounded-lg border border-line/10 px-3 py-2 text-ink hover:text-ink"
             onClick={onClose}
           >
             ×
           </button>
         </div>
 
-        <div className="mx-auto mt-6 grid min-h-72 max-w-md place-items-center rounded-2xl bg-white p-4 text-slate-900">
+        <div className="mx-auto mt-6 grid min-h-72 max-w-md place-items-center rounded-2xl bg-surface p-4 text-ink">
           {loading ? (
             <p role="status">Đang tạo mã QR...</p>
           ) : error ? (
-            <p className="text-rose-700" role="alert">
-              {error}
-            </p>
+            <div>
+              <p className="break-words text-danger" role="alert">
+                {error}
+              </p>
+              <button
+                type="button"
+                className="secondary-button mt-4"
+                onClick={onRetry}
+              >
+                Thử lại mã QR
+              </button>
+            </div>
           ) : qrUrl ? (
             <Image
               src={qrUrl}
@@ -640,7 +640,7 @@ function QrDialog({
           ) : null}
         </div>
 
-        <p className="mt-4 text-sm text-slate-400">
+        <p className="mt-4 text-sm text-muted">
           Chỉ đưa mã này cho nhân viên khi check-in. Không chia sẻ công khai.
         </p>
         <button
@@ -651,14 +651,13 @@ function QrDialog({
         >
           {downloading ? "Đang tải..." : "Tải QR"}
         </button>
-      </section>
-    </div>
+      </AccessibleDialog>
   );
 }
 
 function PageShell({ children }: { children: ReactNode }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 px-5 text-center text-slate-100">
+    <main className="grid min-h-[70vh] place-items-center bg-canvas px-5 text-center text-ink">
       <section className="panel w-full max-w-xl p-8">{children}</section>
     </main>
   );
@@ -668,7 +667,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <p className="section-label">{label}</p>
-      <p className="mt-1 text-slate-200">{children}</p>
+      <p className="mt-1 text-ink">{children}</p>
     </div>
   );
 }
@@ -680,18 +679,18 @@ function ticketStatus(status: TicketStatus): {
   if (status === "CHECKED_IN") {
     return {
       label: "Đã check-in",
-      className: "bg-sky-300/10 text-sky-200",
+      className: "bg-lavender/40 text-info",
     };
   }
   if (status === "VOIDED") {
     return {
       label: "Vé không còn hiệu lực",
-      className: "bg-rose-300/10 text-rose-200",
+      className: "bg-coral/30 text-danger",
     };
   }
   return {
     label: "Sẵn sàng sử dụng",
-    className: "bg-emerald-300/10 text-emerald-200",
+    className: "bg-mint/30 text-success",
   };
 }
 
@@ -718,7 +717,12 @@ function ticketQrError(error: unknown): string {
     if (error.status === 404) return "Không tìm thấy vé.";
     if (error.status === 409) return "Vé không còn khả dụng để hiển thị QR.";
   }
-  return "Không thể tạo mã QR. Vui lòng thử lại.";
+  return (
+    "Không thể tạo mã QR. Vui lòng thử lại." +
+    (error instanceof ApiError && error.requestId
+      ? ` Mã hỗ trợ: ${error.requestId}`
+      : "")
+  );
 }
 
 function cancellationErrorMessage(error: unknown): string {

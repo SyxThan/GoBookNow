@@ -129,6 +129,7 @@ export function configureHttp(app: INestApplication, useJsonLogger = true) {
       'Content-Type',
       'Idempotency-Key',
       'X-Request-Id',
+      'X-Portal',
       'sentry-trace',
       'baggage',
     ],

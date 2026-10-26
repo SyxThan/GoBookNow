@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import Image from "next/image";
+import { ServiceCard } from "@/components/discovery/service-card";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
@@ -19,7 +18,6 @@ import {
   type ServiceSearchQuery,
   type ServiceSearchResponse,
 } from "@/lib/api-client";
-import { formatDateTime, formatMoney, locationLabel } from "@/lib/format";
 
 const DEFAULT_LIMIT = 12;
 const FILTER_KEYS = [
@@ -156,21 +154,14 @@ export function ServicesSearch() {
     updateUrl({ [key]: absoluteDate(event.target.value) });
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 bg-slate-950/90 px-5 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <Link href="/" className="text-lg font-bold tracking-tight text-white">
-            GoBook<span className="text-teal-300">Now</span>
-          </Link>
-          <span className="text-sm text-slate-400">Khám phá không cần đăng nhập</span>
-        </div>
-      </header>
+    <main className="min-h-[70vh] bg-canvas text-ink">
 
-      <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.16),_transparent_35%)] px-5 py-12 sm:py-16">
+
+      <section className="border-b border-line/10 bg-lavender/25 px-5 py-12 sm:py-16">
         <div className="mx-auto max-w-7xl">
           <p className="eyebrow">Khám phá GoBook</p>
-          <h1 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight sm:text-6xl">
-            Tìm đúng trải nghiệm cho lịch trình của bạn.
+          <h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">
+            Lịch trống của bạn. Trải nghiệm của riêng bạn.
           </h1>
           <DebouncedSearch
             key={urlKeyword}
@@ -191,7 +182,7 @@ export function ServicesSearch() {
           >
             {filtersOpen ? "Ẩn bộ lọc" : "Mở bộ lọc"}
           </button>
-          <button type="button" className="text-sm text-teal-300" onClick={clearFilters}>
+          <button type="button" className="text-sm text-info" onClick={clearFilters}>
             Xóa bộ lọc
           </button>
         </div>
@@ -199,13 +190,13 @@ export function ServicesSearch() {
         <div className="grid items-start gap-7 lg:grid-cols-[280px_minmax(0,1fr)]">
           <aside
             id="service-filters"
-            className={`${filtersOpen ? "block" : "hidden"} panel p-5 lg:sticky lg:top-5 lg:block`}
+            className={`${filtersOpen ? "block" : "hidden"} panel p-5 lg:sticky lg:top-28 lg:block`}
           >
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Bộ lọc</h2>
+              <h2 className="font-bold">Bộ lọc</h2>
               <button
                 type="button"
-                className="hidden text-sm text-teal-300 hover:text-teal-200 lg:block"
+                className="hidden text-sm text-info hover:text-info lg:block"
                 onClick={clearFilters}
               >
                 Xóa tất cả
@@ -225,7 +216,7 @@ export function ServicesSearch() {
                 ))}
               </FilterSelect>
               {categoryError && (
-                <p className="text-xs text-amber-300">Không tải được danh mục.</p>
+                <p className="text-xs text-warning">Không tải được danh mục.</p>
               )}
 
               <FilterSelect
@@ -298,19 +289,20 @@ export function ServicesSearch() {
           </aside>
 
           <section aria-live="polite" aria-busy={loading}>
+            {FILTER_KEYS.some(key => key !== "page" && searchParams.get(key)) && <div className="mb-5 flex flex-wrap gap-2" aria-label="Bộ lọc đang áp dụng">{FILTER_KEYS.filter(key => key !== "page" && searchParams.get(key)).map(key => <button key={key} className="badge min-h-9 max-w-full bg-sun/40" onClick={() => updateUrl({ [key]: undefined })} aria-label={`Bỏ bộ lọc ${key}`}><span className="max-w-52 truncate">{searchParams.get(key)}</span><span aria-hidden="true">×</span></button>)}</div>}
             <div className="mb-5 flex min-h-8 items-center justify-between gap-4">
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted">
                 {result ? `${result.total} kết quả phù hợp` : "Đang tìm kiếm..."}
               </p>
               {loading && result && (
-                <span className="text-xs font-medium text-teal-300">Đang cập nhật…</span>
+                <span className="text-xs font-medium text-info">Đang cập nhật…</span>
               )}
             </div>
 
             {error && (
-              <div className="panel mb-6 border-rose-400/30 p-6" role="alert">
-                <h2 className="font-semibold text-rose-200">Không thể tải kết quả</h2>
-                <p className="mt-2 text-sm text-slate-400">{error}</p>
+              <div className="panel mb-6 border-danger/30 p-6" role="alert">
+                <h2 className="font-bold text-danger">Không thể tải kết quả</h2>
+                <p className="mt-2 text-sm text-muted">{error}</p>
                 <button
                   type="button"
                   className="secondary-button mt-4"
@@ -327,10 +319,10 @@ export function ServicesSearch() {
               <div className="panel grid min-h-80 place-items-center p-8 text-center">
                 <div>
                   <p className="text-4xl" aria-hidden="true">⌕</p>
-                  <h2 className="mt-4 text-xl font-semibold">
+                  <h2 className="mt-4 text-xl font-bold">
                     Không có dịch vụ phù hợp với bộ lọc.
                   </h2>
-                  <p className="mt-2 text-sm text-slate-400">
+                  <p className="mt-2 text-sm text-muted">
                     Thử mở rộng thời gian, mức giá hoặc địa điểm.
                   </p>
                   <button type="button" className="primary-button mt-6" onClick={clearFilters}>
@@ -341,65 +333,7 @@ export function ServicesSearch() {
             ) : result ? (
               <>
                 <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                  {result.items.map((service) => (
-                    <article
-                      key={service.id}
-                      className="group relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 transition hover:-translate-y-1 hover:border-teal-300/40"
-                    >
-                      <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-slate-800 to-slate-950">
-                        {service.thumbnail ? (
-                          <Image
-                            src={service.thumbnail.url}
-                            alt=""
-                            fill
-                            unoptimized
-                            sizes="(min-width: 1280px) 280px, (min-width: 640px) 45vw, 90vw"
-                            className="object-cover transition duration-500 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="grid h-full place-items-center text-sm text-slate-500">
-                            GoBook experience
-                          </div>
-                        )}
-                        <span className="absolute left-4 top-4 rounded-full bg-slate-950/85 px-3 py-1 text-xs font-semibold text-teal-200 backdrop-blur">
-                          {service.kind === "SERVICE" ? "DỊCH VỤ" : "SỰ KIỆN"}
-                        </span>
-                      </div>
-                      <div className="p-5">
-                        <p className="text-xs font-medium text-teal-300">
-                          {service.category.name}
-                        </p>
-                        <h2 className="mt-2 line-clamp-2 text-xl font-semibold text-white">
-                          <Link
-                            href={`/services/${encodeURIComponent(service.slug)}`}
-                            className="rounded outline-none after:absolute after:inset-0 focus-visible:ring-2 focus-visible:ring-teal-300"
-                          >
-                            {service.title}
-                          </Link>
-                        </h2>
-                        <p className="mt-2 truncate text-sm text-slate-400">
-                          {service.vendor.displayName} ·{" "}
-                          {locationLabel(service.vendor.district, service.vendor.province)}
-                        </p>
-                        <div className="mt-5 border-t border-white/10 pt-4">
-                          <p className="font-semibold text-white">
-                            Từ {formatMoney(service.startingPrice.amount)}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {service.nextAvailableSlot
-                              ? `Lịch gần nhất: ${formatDateTime(service.nextAvailableSlot.startAt)}`
-                              : "Lịch đang được cập nhật"}
-                          </p>
-                          <Link
-                            href={`/services/${encodeURIComponent(service.slug)}`}
-                            className="relative z-10 mt-4 inline-flex text-sm font-semibold text-teal-300 hover:text-teal-200"
-                          >
-                            Xem lịch trống →
-                          </Link>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                  {result.items.map((service) => <ServiceCard key={service.id} service={service} />)}
                 </div>
                 <Pagination
                   page={result.page}
@@ -439,8 +373,8 @@ function DebouncedSearch({
       <span className="sr-only">Tìm dịch vụ và sự kiện</span>
       <input
         type="search"
-        className="input h-14 text-base shadow-2xl shadow-teal-950/30"
-        placeholder="Search services and events..."
+        className="input h-14 text-base shadow-[4px_4px_0_var(--border)]"
+        placeholder="Tìm workshop, dịch vụ, sự kiện…"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
       />
@@ -486,7 +420,7 @@ function ResultSkeleton() {
   return (
     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3" aria-label="Đang tải kết quả">
       {Array.from({ length: 6 }, (_, index) => (
-        <div key={index} className="h-80 animate-pulse rounded-3xl bg-slate-900" />
+        <div key={index} className="h-80 animate-pulse rounded-2xl bg-surface" />
       ))}
     </div>
   );
@@ -513,8 +447,8 @@ function Pagination({
       >
         Trước
       </button>
-      <span className="px-3 text-sm text-slate-400" aria-current="page">
-        Trang <strong className="text-white">{page}</strong> / {totalPages}
+      <span className="px-3 text-sm text-muted" aria-current="page">
+        Trang <strong className="text-ink">{page}</strong> / {totalPages}
       </span>
       <button
         type="button"

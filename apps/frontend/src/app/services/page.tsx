@@ -9,15 +9,15 @@ export const metadata: Metadata = {
 
 function SearchFallback() {
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-16 text-slate-100">
+    <main className="min-h-[70vh] bg-canvas px-5 py-16 text-ink">
       <div className="mx-auto max-w-7xl animate-pulse">
-        <div className="h-5 w-28 rounded bg-slate-800" />
-        <div className="mt-6 h-12 max-w-xl rounded bg-slate-800" />
+        <div className="h-5 w-28 rounded bg-soft" />
+        <div className="mt-6 h-12 max-w-xl rounded bg-soft" />
         <div className="mt-10 grid gap-6 lg:grid-cols-[280px_1fr]">
-          <div className="h-96 rounded-3xl bg-slate-900" />
+          <div className="h-96 rounded-2xl bg-surface" />
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }, (_, index) => (
-              <div key={index} className="h-80 rounded-3xl bg-slate-900" />
+              <div key={index} className="h-80 rounded-2xl bg-surface" />
             ))}
           </div>
         </div>

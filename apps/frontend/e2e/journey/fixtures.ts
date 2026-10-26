@@ -30,11 +30,11 @@ export const test = base.extend<
   ],
   catalog: async ({ domain }, provide) => {
     await domain.reset();
-    try {
-      await provide(await domain.catalog());
-    } finally {
-      await domain.cleanup();
-    }
+    // Reset before the next test, after Playwright has disposed the previous
+    // page/context. Truncating while Next prefetch requests are still active can
+    // deadlock with their foreign-key reads. Worker teardown handles the last
+    // cleanup after every browser fixture has closed.
+    await provide(await domain.catalog());
   },
   page: async ({ page, context, provider }, provide, testInfo) => {
     const frontendErrors: string[] = [];
@@ -65,6 +65,8 @@ export const test = base.extend<
     const allowed = new Set([
       process.env.E2E_BASE_URL!,
       process.env.BACKEND_BASE_URL!,
+      process.env.VENDOR_E2E_BASE_URL!,
+      process.env.ADMIN_E2E_BASE_URL!,
     ]);
     await context.route("**/*", async (route) => {
       const url = new URL(route.request().url());

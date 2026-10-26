@@ -118,14 +118,25 @@ describe('TicketTokenService', () => {
     );
   });
 
-  it('requires a configured secret with at least 32 bytes', () => {
-    const prisma = {} as PrismaService;
+  it.each([undefined, '', '   ', 'too-short', 'a'.repeat(31)])(
+    'rejects a missing or short signing key at startup (%s)',
+    (value) => {
+      const prisma = {} as PrismaService;
+      const config = {
+        get: vi.fn().mockReturnValue(value),
+      } as unknown as ConfigService;
+      expect(() => new TicketTokenService(prisma, config)).toThrow(
+        'TICKET_TOKEN_SECRET must contain at least 32 bytes',
+      );
+    },
+  );
+
+  it('accepts a 32-byte signing key at startup', () => {
     const config = {
-      get: vi.fn().mockReturnValue('too-short'),
+      get: vi.fn().mockReturnValue('a'.repeat(32)),
     } as unknown as ConfigService;
-    const service = new TicketTokenService(prisma, config);
-    expect(() => service.generateToken(ticket())).toThrow(
-      'TICKET_TOKEN_SECRET must contain at least 32 bytes',
-    );
+    expect(
+      () => new TicketTokenService({} as PrismaService, config),
+    ).not.toThrow();
   });
 });

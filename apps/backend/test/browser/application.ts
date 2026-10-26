@@ -13,6 +13,10 @@ import { ReviewsModule } from '../../src/reviews/reviews.module.js';
 import { ServicesModule } from '../../src/services/services.module.js';
 import { SlotsModule } from '../../src/slots/slots.module.js';
 import { TicketsModule } from '../../src/tickets/tickets.module.js';
+import { AdminTransactionsModule } from '../../src/admin-transactions/admin-transactions.module.js';
+import { VendorOperationsModule } from '../../src/vendor-operations/vendor-operations.module.js';
+import { VendorApplicationsModule } from '../../src/vendor-applications/vendor-applications.module.js';
+import { VendorsModule } from '../../src/vendors/vendors.module.js';
 import { FILE_STORAGE_PROVIDER } from '../../src/storage/storage.constants.js';
 import { loadBrowserEnvironment } from './environment.js';
 
@@ -34,6 +38,10 @@ export async function createBrowserApplication() {
       ServicesModule,
       SlotsModule,
       TicketsModule,
+      AdminTransactionsModule,
+      VendorOperationsModule,
+      VendorsModule,
+      VendorApplicationsModule,
     ],
   })
     .overrideProvider(FILE_STORAGE_PROVIDER)

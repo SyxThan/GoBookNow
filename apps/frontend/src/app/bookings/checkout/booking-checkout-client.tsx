@@ -391,10 +391,10 @@ export function BookingCheckoutClient() {
           className="panel mx-auto max-w-xl p-8 text-center"
           role="alert"
         >
-          <h1 className="text-2xl font-semibold text-white">
+          <h1 className="text-2xl font-bold text-ink">
             Không thể tải tóm tắt booking
           </h1>
-          <p className="mt-3 text-sm text-slate-400">
+          <p className="mt-3 text-sm text-muted">
             Vui lòng tải lại dữ liệu trước khi tạo hold.
           </p>
           <button
@@ -418,10 +418,10 @@ export function BookingCheckoutClient() {
           className="panel mx-auto max-w-xl p-8 text-center"
           role="alert"
         >
-          <h1 className="text-2xl font-semibold text-white">
+          <h1 className="text-2xl font-bold text-ink">
             Khung giờ không còn khả dụng
           </h1>
-          <p className="mt-3 text-sm text-slate-400">
+          <p className="mt-3 text-sm text-muted">
             Dữ liệu Slot đã thay đổi. Hãy quay lại và chọn một lịch khác.
           </p>
           <button
@@ -444,7 +444,7 @@ export function BookingCheckoutClient() {
       <div className="mb-7 flex items-center justify-between gap-4">
         <div>
           <p className="eyebrow">Bước 2 / 2</p>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-muted">
             Xác nhận trước khi giữ chỗ
           </p>
         </div>
@@ -464,7 +464,7 @@ export function BookingCheckoutClient() {
           quantity={draft.quantity}
         />
 
-        <aside className="panel p-5 lg:sticky lg:top-5">
+        <aside className="panel p-5 lg:sticky lg:top-28">
           <QuantitySelector
             value={draft.quantity}
             max={slot.capacity}
@@ -472,7 +472,7 @@ export function BookingCheckoutClient() {
             onChange={updateQuantity}
           />
 
-          <div className="mt-5 border-t border-white/10 pt-5">
+          <div className="mt-5 border-t border-line/10 pt-5">
             <label htmlFor="voucher-code" className="section-label">
               Mã voucher
             </label>
@@ -508,7 +508,7 @@ export function BookingCheckoutClient() {
               </button>
             </div>
             {voucherError && (
-              <p className="mt-2 text-sm text-rose-200" role="alert">
+              <p className="mt-2 text-sm text-danger" role="alert">
                 {voucherError}
               </p>
             )}
@@ -523,7 +523,7 @@ export function BookingCheckoutClient() {
                     )}
                   </span>
                 </p>
-                <p className="flex justify-between text-teal-200">
+                <p className="flex justify-between text-info">
                   <span>Voucher {voucherQuote.code}</span>
                   <span>
                     -
@@ -533,7 +533,7 @@ export function BookingCheckoutClient() {
                     )}
                   </span>
                 </p>
-                <p className="flex justify-between font-semibold">
+                <p className="flex justify-between font-bold">
                   <span>Tổng dự kiến</span>
                   <span>
                     {formatMoney(
@@ -542,7 +542,7 @@ export function BookingCheckoutClient() {
                     )}
                   </span>
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted">
                   Giá và lượt voucher được xác nhận lại khi giữ chỗ.
                 </p>
               </div>
@@ -552,15 +552,15 @@ export function BookingCheckoutClient() {
           {error && (
             <div
               id="hold-error"
-              className="mt-5 rounded-xl border border-rose-300/30 bg-rose-300/10 p-4"
+              className="mt-5 rounded-xl border border-danger/30 bg-coral/30 p-4"
               role="alert"
             >
-              <p className="text-sm text-rose-100">{error.message}</p>
+              <p className="text-sm text-danger">{error.message}</p>
               {(error.kind === "CAPACITY" ||
                 error.kind === "SLOT_UNAVAILABLE") && (
                 <button
                   type="button"
-                  className="mt-3 text-sm font-semibold text-teal-200"
+                  className="mt-3 text-sm font-bold text-info"
                   onClick={chooseAnother}
                 >
                   Chọn khung giờ khác
@@ -569,7 +569,7 @@ export function BookingCheckoutClient() {
               {error.kind === "IDEMPOTENCY" && (
                 <button
                   type="button"
-                  className="mt-3 text-sm font-semibold text-teal-200"
+                  className="mt-3 text-sm font-bold text-info"
                   onClick={startFreshAttempt}
                 >
                   Tạo lần thử mới
@@ -582,14 +582,15 @@ export function BookingCheckoutClient() {
             <LoginPanel
               onSuccess={(token) => {
                 setAccessToken(token);
+                window.dispatchEvent(new Event("gobook:session"));
                 setShowLogin(false);
                 setState({ step: "SUMMARY" });
               }}
             />
           ) : (
             <>
-              <p className="mt-5 text-xs leading-5 text-slate-500">
-                Khi xác nhận, backend kiểm tra lại tình trạng Slot, sức chứa và
+              <p className="mt-5 text-xs leading-5 text-muted">
+                Khi xác nhận, hệ thống kiểm tra lại lịch, số chỗ còn trống và
                 giá.
               </p>
               <button
@@ -648,11 +649,11 @@ function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
   };
 
   return (
-    <form className="mt-6 border-t border-white/10 pt-5" onSubmit={submit}>
-      <h2 className="font-semibold text-white">Đăng nhập để giữ chỗ</h2>
+    <form className="mt-6 border-t border-line/10 pt-5" onSubmit={submit}>
+      <h2 className="font-bold text-ink">Đăng nhập để giữ chỗ</h2>
       <Link
         href="/register"
-        className="mt-3 inline-block text-sm text-teal-300"
+        className="mt-3 inline-block text-sm text-info"
       >
         Chưa có tài khoản? Đăng ký khách hàng
       </Link>
@@ -679,7 +680,7 @@ function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
         />
       </label>
       {error && (
-        <p className="mt-3 text-sm text-rose-200" role="alert">
+        <p className="mt-3 text-sm text-danger" role="alert">
           {error}
         </p>
       )}
@@ -696,13 +697,11 @@ function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
 
 function CheckoutShell({ children }: { children: ReactNode }) {
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="border-b border-white/10 px-5 py-4">
+    <main className="min-h-[70vh] bg-canvas text-ink">
+      <header className="border-b border-line/10 px-5 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <Link href="/services" className="text-lg font-bold text-white">
-            GoBook<span className="text-teal-300">Now</span>
-          </Link>
-          <span className="text-sm text-slate-400">Checkout an toàn</span>
+          <Link href="/services" className="text-sm font-bold underline underline-offset-4">← Khám phá trải nghiệm</Link>
+          <span className="badge bg-mint">Đặt chỗ an toàn</span>
         </div>
       </header>
       <div className="mx-auto max-w-5xl px-5 py-8 sm:py-12">{children}</div>
@@ -714,10 +713,10 @@ function CheckoutLoading() {
   return (
     <CheckoutShell>
       <div className="animate-pulse">
-        <div className="h-6 w-44 rounded bg-slate-800" />
+        <div className="h-6 w-44 rounded bg-soft" />
         <div className="mt-8 grid gap-7 lg:grid-cols-[1fr_340px]">
-          <div className="h-96 rounded-3xl bg-slate-900" />
-          <div className="h-72 rounded-3xl bg-slate-900" />
+          <div className="h-96 rounded-2xl bg-surface" />
+          <div className="h-72 rounded-2xl bg-surface" />
         </div>
       </div>
     </CheckoutShell>
@@ -727,10 +726,10 @@ function CheckoutLoading() {
 function EmptyCheckout() {
   return (
     <section className="panel mx-auto max-w-xl p-8 text-center">
-      <h1 className="text-2xl font-semibold text-white">
+      <h1 className="text-2xl font-bold text-ink">
         Chưa có Slot được chọn
       </h1>
-      <p className="mt-3 text-sm text-slate-400">
+      <p className="mt-3 text-sm text-muted">
         Checkout chỉ bắt đầu sau khi bạn chọn một khung giờ từ trang dịch vụ.
       </p>
       <Link href="/services" className="primary-button mt-6 inline-flex">

@@ -1845,7 +1845,9 @@ Publish
 
 Service xuất hiện ở public `GET /api/v1/services` và
 `GET /api/v1/services/:slug`. Hide loại Service khỏi public catalog; muốn archive
-Service đang published phải hide trước. DRAFT/HIDDEN có thể soft-delete.
+Service đang published phải hide trước. DRAFT/HIDDEN/ARCHIVED có thể soft-delete.
+Soft-delete chỉ đánh dấu `deletedAt`, giữ nguyên dữ liệu lịch, đặt chỗ, vé và
+thanh toán để tra cứu lịch sử; không mở lại hoặc chỉnh sửa dịch vụ đã lưu trữ.
 
 ---
 

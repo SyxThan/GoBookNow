@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Ticket } from '../generated/prisma/client.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma/prisma.service.js';
+import { logger } from '../observability/logger.js';
 
 const CURRENT_TOKEN_VERSION = 1;
 const MAX_TOKEN_LENGTH = 512;
@@ -17,7 +18,16 @@ export class TicketTokenService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    try {
+      this.secret();
+    } catch (error: unknown) {
+      logger.emit('error', 'ticket.configuration.invalid', {
+        errorCode: 'TICKET_TOKEN_SECRET_INVALID',
+      });
+      throw error;
+    }
+  }
 
   generateToken(
     ticket: Pick<Ticket, 'id' | 'tokenNonce' | 'tokenVersion'>,
