@@ -15,35 +15,35 @@ Branch: `feat/frontend-neo-brutalism`. Baseline commit: `c640f40`. Working tree 
 
 | Old route | New application | New route | Main component | API dependency | Role | Status / functional tests |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/admin/categories` | Admin | `/categories` | AdminCategoriesClient | Existing `/admin/*` APIs | ADMIN | Pending migration and rerun |
-| `/admin/transactions/[paymentId]` | Admin | `/transactions/[paymentId]` | TransactionDetailClient | Existing `/admin/*` APIs | ADMIN | Pending migration and rerun |
-| `/admin/transactions` | Admin | `/transactions` | AdminTransactionsClient | Existing `/admin/*` APIs | ADMIN | Pending migration and rerun |
-| `/admin/vendor-applications` | Admin | `/vendor-applications` | AdminVendorApplicationsClient | Existing `/admin/*` APIs | ADMIN | Pending migration and rerun |
-| `/admin/vouchers` | Admin | `/vouchers` | VouchersManager | Existing `/admin/*` APIs | ADMIN | Pending migration and rerun |
-| `/bookings/[bookingId]` | Customer | `/bookings/[bookingId]` | BookingTicketsClient | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Pending migration and rerun |
-| `/bookings/checkout` | Customer | `/bookings/checkout` | Suspense, BookingCheckoutClient | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Pending migration and rerun |
-| `/bookings` | Customer | `/bookings` | BookingsHub | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Pending migration and rerun |
-| `/login` | Customer | `/login` | CustomerAuthForm | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Pending migration and rerun |
-| `/` | Customer | `/` | Link, Burst, HomeCatalog | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Pending migration and rerun |
-| `/payment/result` | Customer | `/payment/result` | Suspense, PaymentResultClient | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Pending migration and rerun |
-| `/register` | Customer | `/register` | CustomerAuthForm | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Pending migration and rerun |
-| `/services/[slug]` | Customer | `/services/[slug]` | ServiceDetailClient | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Pending migration and rerun |
-| `/services` | Customer | `/services` | Suspense, ServicesSearch | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Pending migration and rerun |
-| `/vendor/application` | Vendor | `/onboarding/application` | VendorApplicationClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | CUSTOMER or VENDOR applicant | Pending migration and rerun |
-| `/vendor/bookings/[bookingId]` | Vendor | `/bookings/[bookingId]` | VendorBookingDetailClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
-| `/vendor/bookings` | Vendor | `/bookings` | VendorBookingsClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
-| `/vendor/check-in` | Vendor | `/check-in` | VendorCheckInClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
-| `/vendor/dashboard` | Vendor | `/dashboard` | VendorDashboardClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
-| `/vendor/profile` | Vendor | `/profile` | VendorProfileClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | CUSTOMER or VENDOR owner | Pending migration and rerun |
-| `/vendor/services/[serviceId]` | Vendor | `/services/[serviceId]` | ServiceEditor | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
-| `/vendor/services/[serviceId]/slots` | Vendor | `/services/[serviceId]/slots` | SlotsManager | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
-| `/vendor/services` | Vendor | `/services` | VendorServicesClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Pending migration and rerun |
+| `/admin/categories` | Admin | `/categories` | AdminCategoriesClient | Existing `/admin/*` APIs | ADMIN | Migrated; independent build, real journeys and four-viewport QA |
+| `/admin/transactions/[paymentId]` | Admin | `/transactions/[paymentId]` | TransactionDetailClient | Existing `/admin/*` APIs | ADMIN | Migrated; independent build, real journeys and four-viewport QA |
+| `/admin/transactions` | Admin | `/transactions` | AdminTransactionsClient | Existing `/admin/*` APIs | ADMIN | Migrated; independent build, real journeys and four-viewport QA |
+| `/admin/vendor-applications` | Admin | `/vendor-applications` | AdminVendorApplicationsClient | Existing `/admin/*` APIs | ADMIN | Migrated; independent build, real journeys and four-viewport QA |
+| `/admin/vouchers` | Admin | `/vouchers` | VouchersManager | Existing `/admin/*` APIs | ADMIN | Migrated; independent build, real journeys and four-viewport QA |
+| `/bookings/[bookingId]` | Customer | `/bookings/[bookingId]` | BookingTicketsClient | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/bookings/checkout` | Customer | `/bookings/checkout` | Suspense, BookingCheckoutClient | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/bookings` | Customer | `/bookings` | BookingsHub | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/login` | Customer | `/login` | CustomerAuthForm | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Migrated; independent build, real journeys and four-viewport QA |
+| `/` | Customer | `/` | Link, Burst, HomeCatalog | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Migrated; independent build, real journeys and four-viewport QA |
+| `/payment/result` | Customer | `/payment/result` | Suspense, PaymentResultClient | Existing public/auth/booking/payment/ticket APIs | CUSTOMER owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/register` | Customer | `/register` | CustomerAuthForm | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Migrated; independent build, real journeys and four-viewport QA |
+| `/services/[slug]` | Customer | `/services/[slug]` | ServiceDetailClient | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Migrated; independent build, real journeys and four-viewport QA |
+| `/services` | Customer | `/services` | Suspense, ServicesSearch | Existing public/auth/booking/payment/ticket APIs | PUBLIC | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/application` | Vendor | `/onboarding/application` | VendorApplicationClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | CUSTOMER or VENDOR applicant | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/bookings/[bookingId]` | Vendor | `/bookings/[bookingId]` | VendorBookingDetailClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/bookings` | Vendor | `/bookings` | VendorBookingsClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/check-in` | Vendor | `/check-in` | VendorCheckInClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/dashboard` | Vendor | `/dashboard` | VendorDashboardClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/profile` | Vendor | `/profile` | VendorProfileClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | CUSTOMER or VENDOR owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/services/[serviceId]` | Vendor | `/services/[serviceId]` | ServiceEditor | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/services/[serviceId]/slots` | Vendor | `/services/[serviceId]/slots` | SlotsManager | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
+| `/vendor/services` | Vendor | `/services` | VendorServicesClient | Existing `/vendors`, `/vendor/*`, `/vendor-applications/me` APIs | VENDOR / approved owner | Migrated; independent build, real journeys and four-viewport QA |
 
-## Dedicated resource routes to add
+## Dedicated resource routes implemented
 
 Vendor: `/login`, `/services/new`, `/services/[serviceId]/edit`, `/services/[serviceId]/slots/new`, `/services/[serviceId]/slots/[slotId]/edit`, `/onboarding/status`.
 Admin: `/login`, `/vendor-applications/[applicationId]`, `/vouchers/new`, `/vouchers/[voucherId]/edit`.
-Service overview, images and lifecycle remain resource context; editing fields and slot/voucher forms become dedicated tasks. Category quick-edit dialogs remain appropriate.
+Service overview, images and lifecycle remain resource context; editing fields and slot/voucher forms are dedicated tasks. Category management retains its structured inline form and short confirmations.
 
 ## Verification gates
 
@@ -56,4 +56,14 @@ Service overview, images and lifecycle remain resource context; editing fields a
 7. Reviewed browser screenshots, four viewports, accessibility and performance measurements.
 8. CI/deployment documentation; logical commits on the existing branch.
 
-Historical reports are evidence of the prior implementation only, not results for this migration. Results below will be updated after execution.
+Historical reports describe the prior implementation. Current evidence and limitations are recorded in [PORTAL_VERIFICATION_REPORT.md](PORTAL_VERIFICATION_REPORT.md).
+
+## Legacy redirect behavior
+
+`/vendor` redirects to Vendor `/dashboard`; `/admin` redirects to Admin `/vendor-applications`. Known `/vendor/*` and `/admin/*` routes in the table use temporary HTTP 307 with `Cache-Control: no-store`. `/vendor/application` maps to `/onboarding/application`; all dynamic resource IDs remain intact. Unknown paths return 404. Only `page`, `status`, `search`, `sort`, `from`, `to`, `serviceId` are retained, with bounded length and one value per key. Access tokens, refresh tokens, signed forms, QR payloads, `next` and unrecognized query keys are discarded. No session is copied to another origin.
+
+All Customer routes in the inventory retain their URLs and behavior. Dedicated new pages are described in [Vendor](VENDOR_PORTAL.md) and [Admin](ADMIN_CONSOLE.md). Customer marketing/account navigation now points to bookings and the configured Vendor onboarding origin; it contains no operational sidebar or Admin entry.
+
+## Migration safeguards completed
+
+Replacement features were committed before removing legacy implementations. Removal was deferred until recorded real operator journeys, browser session isolation, full visual/a11y matrix and targeted follow-up checks passed. Legacy trees had no uncommitted changes. Existing financial/ticket rules and all 23 database migrations were preserved.

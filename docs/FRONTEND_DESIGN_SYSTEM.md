@@ -1,3 +1,5 @@
+> Portal migration (2026-10-26): the original design is preserved, while routes and ownership now follow [PORTAL_ARCHITECTURE.md](PORTAL_ARCHITECTURE.md). This historical report is not verification evidence for the new portals; see [PORTAL_VERIFICATION_REPORT.md](PORTAL_VERIFICATION_REPORT.md).
+
 # GoBookNow design system
 
 Branch: `feat/frontend-neo-brutalism`. Implementation: `apps/frontend/src/app/globals.css` and `src/components/ui/`.

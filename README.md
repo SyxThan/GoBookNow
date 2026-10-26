@@ -1,6 +1,6 @@
 # GoBookNow
 
-Monorepo gồm frontend Next.js, backend NestJS, PostgreSQL và Redis. Chạy các lệnh dưới đây bằng PowerShell tại thư mục gốc repository.
+Monorepo gồm ba ứng dụng Next.js (Customer, Vendor, Admin), backend NestJS, PostgreSQL và Redis. Chạy các lệnh dưới đây bằng PowerShell tại thư mục gốc repository.
 
 ## Yêu cầu
 
@@ -19,8 +19,10 @@ pnpm install --frozen-lockfile
 if (!(Test-Path apps/backend/.env)) {
   Copy-Item apps/backend/.env.example apps/backend/.env
 }
-if (!(Test-Path apps/frontend/.env.local)) {
-  Copy-Item apps/frontend/.env.example apps/frontend/.env.local
+foreach ($portalName in @('frontend', 'vendor-portal', 'admin-console')) {
+  if (!(Test-Path "apps/$portalName/.env.local")) {
+    Copy-Item "apps/$portalName/.env.example" "apps/$portalName/.env.local"
+  }
 }
 
 docker compose up -d
@@ -38,7 +40,7 @@ Trước khi dùng tài khoản/vé, chỉnh trong `apps/backend/.env`:
 - `JWT_ACCESS_SECRET`: khóa riêng của môi trường local, thay giá trị mẫu.
 - `TICKET_TOKEN_SECRET`: khóa ngẫu nhiên tối thiểu **32 byte**, cần để tạo và kiểm tra vé QR.
 - `PLATFORM_COMMISSION_BPS=1000`: phí nền tảng 10% theo cấu hình mẫu; bắt buộc là số nguyên từ `0` đến `10000` (`0` là 0%, `10000` là 100%). File `.env` cũ cần bổ sung dòng này nếu chưa có.
-- `PORT=3001`, `FRONTEND_ORIGIN=http://localhost:3000`, `CORS_ORIGINS=http://localhost:3000`.
+- `PORT=3001`, `FRONTEND_ORIGIN=http://localhost:3000`, `VENDOR_ORIGIN=http://localhost:3002`, `ADMIN_ORIGIN=http://localhost:3003`. Nếu đặt `CORS_ORIGINS`, dùng đủ `http://localhost:3000,http://localhost:3002,http://localhost:3003`.
 
 Có thể tạo từng khóa bằng lệnh dưới đây rồi lưu vào `.env` (không đưa khóa vào Git):
 
@@ -46,7 +48,7 @@ Có thể tạo từng khóa bằng lệnh dưới đây rồi lưu vào `.env` 
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-Frontend dùng `NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1` trong `apps/frontend/.env.local`. Dùng cùng hostname `localhost` cho trình duyệt và API để cookie đăng nhập hoạt động nhất quán.
+Ba frontend dùng `NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1` trong `.env.local` riêng của từng ứng dụng. Dùng cùng hostname `localhost` cho trình duyệt và API để cookie đăng nhập hoạt động nhất quán. Xem [kiến trúc và cấu hình ba portal](docs/PORTAL_ARCHITECTURE.md).
 
 Sau khi chỉnh `.env`, khởi động lại backend để nạp cấu hình mới. Nếu thiếu hoặc sai `PLATFORM_COMMISSION_BPS`, backend sẽ từ chối khởi động và ghi sự kiện `booking.configuration.invalid` với mã `PLATFORM_COMMISSION_BPS_INVALID`, thay vì đợi đến thao tác giữ chỗ mới trả lỗi 500.
 
@@ -63,7 +65,7 @@ docker compose up -d
 pnpm dev
 ```
 
-`pnpm dev` chạy trực tiếp hai workspace bằng pnpm với log có tiền tố `backend` / `frontend`. Lệnh dev không phụ thuộc vào binary Turbo trên Windows; Turbo vẫn dùng cho build/lint/test.
+`pnpm dev` chạy bốn ứng dụng bằng pnpm với log theo workspace. Các lệnh build/lint/test cũng chạy qua pnpm để không phụ thuộc binary Turbo trên Windows.
 
 Nếu gặp mã thoát `3221226505` (`0xC0000409`) ngay sau dòng `turbo`, đó là tiến trình native dừng kiểu fail-fast, không phải bằng chứng migration hay seed bị lỗi. Bản hiện tại đã chuyển lệnh dev sang pnpm để tránh lớp khởi động này. Không cần xóa database, cài lại dependencies hoặc nâng Turbo để chạy dev.
 
@@ -71,7 +73,7 @@ Cảnh báo Compose về các container `postgres-e2e`, `postgres-integration`, 
 
 Nếu Next báo một dev server khác đang chạy trong cùng repository, dừng terminal Next cũ bằng `Ctrl+C` trước.
 
-Hoặc mở hai terminal riêng ở thư mục gốc:
+Có thể chạy riêng ở thư mục gốc với `pnpm dev:customer`, `pnpm dev:vendor`, `pnpm dev:admin`, `pnpm dev:backend`. Ví dụ:
 
 ```powershell
 # Terminal 1
@@ -85,7 +87,9 @@ pnpm dev:frontend
 
 | Thành phần | Địa chỉ |
 | --- | --- |
-| Frontend | http://localhost:3000 |
+| Customer | http://localhost:3000 |
+| Vendor Portal | http://localhost:3002 |
+| Admin Console | http://localhost:3003 |
 | Backend API | http://localhost:3001/api/v1 |
 | Swagger | http://localhost:3001/docs |
 | Health | http://localhost:3001/api/v1/health |
@@ -151,3 +155,9 @@ pnpm --filter backend typecheck
 Kiểm thử tích hợp và browser E2E cần database kiểm thử riêng. Xem tài liệu trong `docs/`; không trỏ các runner dọn dữ liệu kiểm thử vào database local đang dùng để phát triển.
 
 Thiết kế và bằng chứng kiểm chứng: [Design system](docs/FRONTEND_DESIGN_SYSTEM.md), [Route audit](docs/FRONTEND_REDESIGN_AUDIT.md), [Delivery report](docs/FRONTEND_REDESIGN_REPORT.md).
+
+## Kiến trúc ba portal
+
+Customer chỉ phục vụ khám phá, đăng ký, đặt chỗ, thanh toán và vé. Vendor/Admin có ứng dụng, điều hướng và phiên đăng nhập riêng; đăng xuất một portal không thoát hai portal còn lại. Tạo `.env.local` của hai app mới từ `.env.example` khi file chưa tồn tại. Không ghi đè `.env` đang dùng.
+
+Xem [cấu hình, triển khai và xác thực](docs/PORTAL_ARCHITECTURE.md), [Vendor](docs/VENDOR_PORTAL.md), [Admin](docs/ADMIN_CONSOLE.md) và [bảng chuyển route](docs/PORTAL_MIGRATION_PLAN.md).
