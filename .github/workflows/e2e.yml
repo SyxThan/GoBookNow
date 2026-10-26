@@ -1,4 +1,4 @@
-name: Customer journey E2E
+name: Three portal journeys E2E
 on:
   pull_request:
     branches: [develop, main]
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  customer-journey:
+  portal-journeys:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -28,6 +28,8 @@ jobs:
       INTEGRATION_TEST_ALLOW_CLEANUP: "1"
       E2E_BASE_URL: http://127.0.0.1:3100
       BACKEND_BASE_URL: http://127.0.0.1:3101
+      VENDOR_E2E_BASE_URL: http://127.0.0.1:3102
+      ADMIN_E2E_BASE_URL: http://127.0.0.1:3103
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -47,7 +49,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: customer-journey-diagnostics
+          name: portal-journey-diagnostics
           path: |
             apps/frontend/playwright-report/journey/
             apps/frontend/test-results/
