@@ -115,9 +115,7 @@ export function PaymentResultClient() {
         <h1 className="mt-3 text-3xl font-bold">
           Chưa đọc được trạng thái thanh toán
         </h1>
-        <p className="mt-4 text-muted">
-          {errorMessage(paymentQuery.error)}
-        </p>
+        <p className="mt-4 text-muted">{errorMessage(paymentQuery.error)}</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <button
             type="button"
@@ -174,9 +172,7 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">!</StatusIcon>
         <p className="eyebrow mt-7">Cần kiểm tra trạng thái</p>
-        <h1 className="mt-3 text-3xl font-bold">
-          Đặt chỗ chưa thể xác nhận
-        </h1>
+        <h1 className="mt-3 text-3xl font-bold">Đặt chỗ chưa thể xác nhận</h1>
         <p className="mt-4 text-ink">
           {payment.booking.status === "EXPIRED"
             ? "Đã ghi nhận thanh toán, nhưng đặt chỗ đã hết hạn. Khoản tiền đang chờ xử lý hoàn tiền."
@@ -193,9 +189,7 @@ export function PaymentResultClient() {
       <ResultShell>
         <StatusIcon tone="error">×</StatusIcon>
         <p className="eyebrow mt-7">Đã hết hạn</p>
-        <h1 className="mt-3 text-3xl font-bold">
-          Phiên thanh toán đã hết hạn
-        </h1>
+        <h1 className="mt-3 text-3xl font-bold">Phiên thanh toán đã hết hạn</h1>
         <p className="mt-4 text-muted">
           GoBook không còn chờ thanh toán cho phiên đặt chỗ này.
         </p>
@@ -331,9 +325,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
       <p className="section-label">{label}</p>
-      <p className="mt-2 truncate text-sm font-medium text-ink">
-        {children}
-      </p>
+      <p className="mt-2 truncate text-sm font-medium text-ink">{children}</p>
     </div>
   );
 }
@@ -341,6 +333,9 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 function ResultActions({ bookingId }: { bookingId?: string }) {
   return (
     <div className="mt-8 flex flex-wrap justify-center gap-3">
+      <Link href="/bookings" className="secondary-button">
+        Đơn của tôi
+      </Link>
       {bookingId ? (
         <Link
           href={`/bookings/${encodeURIComponent(bookingId)}`}

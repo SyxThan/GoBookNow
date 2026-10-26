@@ -152,6 +152,7 @@ export function BookingCheckoutClient() {
       ),
     retry: false,
     onSuccess: (booking, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ["customer-bookings"] });
       submitGuard.current = false;
       setPaymentState({ step: "READY" });
       clearHoldAttempt(window.sessionStorage);
@@ -444,9 +445,7 @@ export function BookingCheckoutClient() {
       <div className="mb-7 flex items-center justify-between gap-4">
         <div>
           <p className="eyebrow">Bước 2 / 2</p>
-          <p className="mt-2 text-sm text-muted">
-            Xác nhận trước khi giữ chỗ
-          </p>
+          <p className="mt-2 text-sm text-muted">Xác nhận trước khi giữ chỗ</p>
         </div>
         <button
           type="button"
@@ -651,10 +650,7 @@ function LoginPanel({ onSuccess }: { onSuccess: (token: string) => void }) {
   return (
     <form className="mt-6 border-t border-line/10 pt-5" onSubmit={submit}>
       <h2 className="font-bold text-ink">Đăng nhập để giữ chỗ</h2>
-      <Link
-        href="/register"
-        className="mt-3 inline-block text-sm text-info"
-      >
+      <Link href="/register" className="mt-3 inline-block text-sm text-info">
         Chưa có tài khoản? Đăng ký khách hàng
       </Link>
       <label className="mt-4 block">
@@ -700,7 +696,12 @@ function CheckoutShell({ children }: { children: ReactNode }) {
     <main className="min-h-[70vh] bg-canvas text-ink">
       <header className="border-b border-line/10 px-5 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
-          <Link href="/services" className="text-sm font-bold underline underline-offset-4">← Khám phá trải nghiệm</Link>
+          <Link
+            href="/services"
+            className="text-sm font-bold underline underline-offset-4"
+          >
+            ← Khám phá trải nghiệm
+          </Link>
           <span className="badge bg-mint">Đặt chỗ an toàn</span>
         </div>
       </header>
@@ -726,9 +727,7 @@ function CheckoutLoading() {
 function EmptyCheckout() {
   return (
     <section className="panel mx-auto max-w-xl p-8 text-center">
-      <h1 className="text-2xl font-bold text-ink">
-        Chưa có Slot được chọn
-      </h1>
+      <h1 className="text-2xl font-bold text-ink">Chưa có Slot được chọn</h1>
       <p className="mt-3 text-sm text-muted">
         Checkout chỉ bắt đầu sau khi bạn chọn một khung giờ từ trang dịch vụ.
       </p>

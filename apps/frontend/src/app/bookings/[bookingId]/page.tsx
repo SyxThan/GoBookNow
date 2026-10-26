@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { BookingTicketsClient } from "./booking-tickets-client";
+import { BookingTrackingPanel } from "./booking-tracking-panel";
 
 export const metadata: Metadata = {
-  title: "Vé của tôi | GoBook",
-  description: "Xem và tải mã QR vé điện tử GoBook.",
+  title: "Chi tiết đặt chỗ | GoBook",
+  description: "Theo dõi trạng thái đặt chỗ, thanh toán và vé điện tử GoBook.",
 };
 
 export default async function BookingTicketsPage({
@@ -12,5 +13,10 @@ export default async function BookingTicketsPage({
   params: Promise<{ bookingId: string }>;
 }) {
   const { bookingId } = await params;
-  return <BookingTicketsClient bookingId={bookingId} />;
+  return (
+    <>
+      <BookingTrackingPanel bookingId={bookingId} />
+      <BookingTicketsClient bookingId={bookingId} />
+    </>
+  );
 }

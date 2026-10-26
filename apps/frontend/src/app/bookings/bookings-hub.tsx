@@ -1,174 +1,287 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getBookingTickets } from "@/lib/api-client";
-import { recentBookingIds } from "@/lib/recent-bookings";
+import {
+  ApiError,
+  listMyBookings,
+  type CustomerBooking,
+} from "@/lib/api-client";
 import { usePortalSession } from "@gobook/auth/use-session";
 import {
   EmptyState,
   PageHeading,
   StatusBadge,
-  Button,
 } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/icon";
+import { formatDate, formatMoney, formatTime } from "@/lib/format";
+
+const tabs = [
+  { label: "Tất cả", status: undefined },
+  { label: "Chờ xử lý", status: "PENDING_PAYMENT" },
+  { label: "Đã xác nhận", status: "CONFIRMED" },
+  { label: "Hết hạn", status: "EXPIRED" },
+  { label: "Đã hủy", status: "CANCELLED" },
+] as const;
+const paymentLabels = {
+  PENDING: "Đang chờ xác nhận",
+  SUCCEEDED: "Đã nhận thanh toán",
+  EXPIRED: "Đã hết hạn",
+  CANCELLED: "Đã hủy",
+} as const;
 
 export function BookingsHub() {
   const { ready, token, onToken } = usePortalSession();
-  const router = useRouter();
-  const [lookupError, setLookupError] = useState("");
+  const [status, setStatus] = useState<
+    CustomerBooking["bookingStatus"] | undefined
+  >();
+  const [searchInput, setSearchInput] = useState("");
+  const [fromInput, setFromInput] = useState("");
+  const [toInput, setToInput] = useState("");
+  const [filters, setFilters] = useState({ search: "", from: "", to: "" });
+  const [page, setPage] = useState(1);
   const query = useQuery({
-    queryKey: ["customer", "recent-bookings"],
+    queryKey: ["customer-bookings", token, status, filters, page],
     enabled: ready,
-    queryFn: async () => {
-      const ids = recentBookingIds();
-      const results = await Promise.allSettled(
-        ids.map((id) => getBookingTickets(id, token, onToken)),
-      );
-      if (ids.length && results.every((result) => result.status === "rejected"))
-        throw new Error(
-          "Không tải được đặt chỗ gần đây. Hãy đăng nhập hoặc mở liên kết đặt chỗ.",
-        );
-      return results.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : [],
-      );
-    },
+    queryFn: ({ signal }) =>
+      listMyBookings(
+        { status, ...filters, page, limit: 10 },
+        token,
+        onToken,
+        signal,
+      ),
+    retry: false,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
-  function open(event: FormEvent<HTMLFormElement>) {
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLookupError("");
-    const value = String(
-      new FormData(event.currentTarget).get("booking"),
-    ).trim();
-    let id = value;
-    if (value.includes("://")) {
-      try {
-        const url = new URL(value);
-        if (url.origin !== location.origin) throw new Error();
-        id = url.pathname.split("/").at(-1) ?? "";
-      } catch {
-        setLookupError("Hãy dùng liên kết đặt chỗ thuộc GoBookNow.");
-        return;
-      }
-    }
-    if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        id,
-      )
-    ) {
-      setLookupError("Vui lòng dán liên kết đặt chỗ hoặc ID hợp lệ.");
-      return;
-    }
-    router.push(`/bookings/${id}`);
+    setPage(1);
+    setFilters({ search: searchInput.trim(), from: fromInput, to: toInput });
   }
+
+  const items = query.data?.items ?? [];
+  const hasPending = items.some(
+    (booking) =>
+      booking.displayStatus === "WAITING_PAYMENT" ||
+      booking.displayStatus === "WAITING_CONFIRMATION",
+  );
+
   return (
     <main className="page-wrap">
-      <PageHeading eyebrow="Cuộc hẹn đang chờ" title="Đặt chỗ & vé của bạn">
-        Mở lại lịch hẹn, xem trạng thái xác nhận và lấy vé QR trước khi lên
-        đường.
+      <PageHeading eyebrow="Tài khoản của bạn" title="Đơn đặt chỗ của tôi">
+        Theo dõi và quản lý tất cả đơn đặt chỗ của bạn.
       </PageHeading>
-      <section className="panel mb-9 grid gap-5 p-6 md:grid-cols-[1fr_1fr] md:items-center">
-        <div>
-          <h2 className="text-xl">Bạn đã có liên kết đặt chỗ?</h2>
-          <p className="mt-2 text-sm text-muted">
-            Dán liên kết bạn đã nhận để mở chi tiết. GoBookNow luôn kiểm tra
-            quyền truy cập của bạn.
+      {hasPending && (
+        <div className="panel mb-7 flex flex-wrap items-center gap-3 bg-sun/30 p-5">
+          <Icon name="ticket" size={24} />
+          <p className="font-semibold">
+            Bạn có đơn đang chờ xử lý trong danh sách này.
           </p>
+          <a href="#booking-list" className="secondary-button ml-auto">
+            Xem đơn
+          </a>
         </div>
-        <form onSubmit={open}>
-          <label className="sr-only" htmlFor="booking-lookup">
-            Liên kết hoặc ID đặt chỗ
-          </label>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <input
-              id="booking-lookup"
-              name="booking"
-              className="input"
-              placeholder="Dán liên kết đặt chỗ…"
-              required
-            />
-            <Button type="submit">
-              Mở
-              <Icon name="arrow" size={17} />
-            </Button>
-          </div>
-          {lookupError && (
-            <p className="mt-3 text-sm text-danger" role="alert">
-              {lookupError}
-            </p>
-          )}
-        </form>
-      </section>
-      <h2 className="mb-2 text-xl">Gần đây trên thiết bị này</h2>
-      <p className="mb-6 max-w-2xl text-sm text-muted">
-        Danh sách ghi nhớ các đặt chỗ bạn đã mở trong phiên này, không phải toàn
-        bộ lịch sử tài khoản. Trạng thái và vé luôn được tải lại từ GoBookNow.
-      </p>
-      {query.isPending ? (
-        <p role="status">Đang kiểm tra đặt chỗ…</p>
-      ) : query.isError ? (
-        <EmptyState
-          title="Chưa thể tải đặt chỗ"
-          action={
-            <button
-              className="secondary-button"
-              onClick={() => query.refetch()}
-            >
-              Thử lại
-            </button>
-          }
-        >
-          {query.error.message}
-        </EmptyState>
-      ) : !query.data?.length ? (
-        <EmptyState
-          title="Chưa có cuộc hẹn gần đây"
-          action={
-            <div className="flex flex-wrap justify-center gap-3">
-              <Link href="/services" className="primary-button">
-                Tìm trải nghiệm
-                <Icon name="arrow" />
-              </Link>
-              {!token && (
-                <Link href="/login" className="secondary-button">
-                  Đăng nhập để mở vé
+      )}
+      <nav
+        aria-label="Lọc trạng thái đơn đặt chỗ"
+        className="mb-6 flex gap-2 overflow-x-auto pb-2"
+      >
+        {tabs.map((tab) => (
+          <button
+            key={tab.label}
+            type="button"
+            aria-pressed={status === tab.status}
+            className={`shrink-0 rounded-xl border-2 border-line px-4 py-2 text-sm font-bold ${status === tab.status ? "bg-sun shadow-[3px_3px_0_var(--border)]" : "bg-surface"}`}
+            onClick={() => {
+              setStatus(tab.status);
+              setPage(1);
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+      <form
+        onSubmit={applyFilters}
+        className="panel mb-8 grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
+      >
+        <label className="text-sm font-semibold">
+          Tìm mã đơn hoặc dịch vụ
+          <input
+            className="input mt-1"
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            maxLength={100}
+            placeholder="Mã đơn, tên trải nghiệm…"
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Từ ngày
+          <input
+            className="input mt-1"
+            type="date"
+            value={fromInput}
+            onChange={(event) => setFromInput(event.target.value)}
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Đến ngày
+          <input
+            className="input mt-1"
+            type="date"
+            min={fromInput || undefined}
+            value={toInput}
+            onChange={(event) => setToInput(event.target.value)}
+          />
+        </label>
+        <button type="submit" className="primary-button">
+          Tìm đơn
+        </button>
+      </form>
+      <div id="booking-list">
+        {query.isPending ? (
+          <p role="status">Đang tải lịch sử đặt chỗ…</p>
+        ) : query.isError ? (
+          <EmptyState
+            title={
+              query.error instanceof ApiError && query.error.status === 401
+                ? "Vui lòng đăng nhập"
+                : "Chưa thể tải đơn đặt chỗ"
+            }
+            action={
+              query.error instanceof ApiError && query.error.status === 401 ? (
+                <Link href="/login" className="primary-button">
+                  Đăng nhập
                 </Link>
-              )}
-            </div>
-          }
-        >
-          Khi bạn đặt chỗ hoặc mở vé trong phiên này, liên kết sẽ xuất hiện tại
-          đây.
-        </EmptyState>
-      ) : (
-        <div className="grid gap-5 md:grid-cols-2">
-          {query.data.map((booking) => (
-            <article className="panel p-6" key={booking.bookingId}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="eyebrow">Đặt chỗ của bạn</p>
-                  <h3 className="mt-2 text-xl">{booking.bookingCode}</h3>
-                </div>
-                <StatusBadge status={booking.bookingStatus} />
-              </div>
-              <p className="mt-4 text-sm text-muted">
-                {booking.tickets.length > 0
-                  ? `${booking.tickets.length} vé điện tử`
-                  : "Vé sẽ hiển thị khi đặt chỗ được xác nhận."}
-              </p>
-              <Link
-                className="secondary-button mt-5"
-                href={`/bookings/${booking.bookingId}`}
-              >
-                Xem chi tiết & vé
-                <Icon name="arrow" />
+              ) : (
+                <button
+                  className="primary-button"
+                  onClick={() => void query.refetch()}
+                >
+                  Thử lại
+                </button>
+              )
+            }
+          >
+            {query.error instanceof ApiError && query.error.status === 401
+              ? "Đăng nhập để xem lịch sử trên mọi thiết bị."
+              : "Kiểm tra kết nối và thử lại."}
+          </EmptyState>
+        ) : items.length === 0 ? (
+          <EmptyState
+            title="Chưa có đơn phù hợp"
+            action={
+              <Link href="/services" className="primary-button">
+                Khám phá dịch vụ
               </Link>
-            </article>
-          ))}
+            }
+          >
+            {status || filters.search || filters.from || filters.to
+              ? "Hãy thử thay đổi bộ lọc để tìm đơn khác."
+              : "Khi bạn giữ chỗ, đơn sẽ xuất hiện tại đây ngay cả khi chưa thanh toán."}
+          </EmptyState>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2">
+            {items.map((booking) => (
+              <BookingCard key={booking.id} booking={booking} />
+            ))}
+          </div>
+        )}
+      </div>
+      {query.data && query.data.totalPages > 1 && (
+        <div className="mt-8 flex items-center justify-center gap-4">
+          <button
+            className="secondary-button"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Trước
+          </button>
+          <span className="text-sm font-semibold">
+            Trang {page}/{query.data.totalPages}
+          </span>
+          <button
+            className="secondary-button"
+            disabled={page >= query.data.totalPages}
+            onClick={() => setPage(page + 1)}
+          >
+            Sau
+          </button>
         </div>
       )}
     </main>
+  );
+}
+
+function BookingCard({ booking }: { booking: CustomerBooking }) {
+  const first = booking.items[0];
+  const otherCount = Math.max(0, booking.items.length - 1);
+  const action =
+    booking.displayStatus === "WAITING_PAYMENT"
+      ? "Thanh toán ngay"
+      : booking.displayStatus === "WAITING_CONFIRMATION"
+        ? "Xem trạng thái"
+        : booking.displayStatus === "REFUND_PENDING" ||
+            booking.displayStatus === "REFUND_COMPLETED"
+          ? "Theo dõi hoàn tiền"
+          : booking.displayStatus === "CONFIRMED" && booking.ticketCount
+            ? "Xem vé"
+            : "Xem chi tiết";
+  return (
+    <article
+      className={`panel flex flex-col p-6 ${booking.displayStatus.startsWith("WAITING_") ? "border-sun bg-sun/10" : ""}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="eyebrow">Đơn đặt chỗ</p>
+          <h2 className="mt-2 text-xl">{booking.bookingCode}</h2>
+        </div>
+        <StatusBadge status={booking.bookingStatus} />
+      </div>
+      <p className="mt-4 font-semibold">
+        {first?.serviceTitle ?? "Trải nghiệm GoBookNow"}
+        {otherCount > 0 ? ` và ${otherCount} mục khác` : ""}
+      </p>
+      {first && (
+        <p className="mt-1 text-sm text-muted">
+          {formatDate(first.slotStartAt)} · {formatTime(first.slotStartAt)} ·{" "}
+          {booking.items.reduce((sum, item) => sum + item.quantity, 0)} chỗ
+        </p>
+      )}
+      <dl className="mt-5 grid gap-2 border-t border-line/20 pt-4 text-sm">
+        <div className="flex justify-between gap-4">
+          <dt>Thanh toán</dt>
+          <dd className="font-semibold">
+            {booking.paymentSummary
+              ? paymentLabels[booking.paymentSummary.status]
+              : "Chưa bắt đầu"}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-4">
+          <dt>Tổng tiền</dt>
+          <dd className="font-bold">
+            {formatMoney(booking.totalAmount, booking.currency)}
+          </dd>
+        </div>
+        {booking.bookingStatus === "PENDING_PAYMENT" && booking.expiresAt && (
+          <div className="flex justify-between gap-4">
+            <dt>Hạn giữ chỗ</dt>
+            <dd className="text-right">
+              {formatDate(booking.expiresAt)} · {formatTime(booking.expiresAt)}
+            </dd>
+          </div>
+        )}
+      </dl>
+      <Link
+        className="primary-button mt-6 self-start"
+        href={`/bookings/${encodeURIComponent(booking.id)}`}
+      >
+        {action}
+        <Icon name="arrow" size={17} />
+      </Link>
+    </article>
   );
 }
