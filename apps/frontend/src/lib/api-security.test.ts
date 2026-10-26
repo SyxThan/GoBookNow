@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { apiRequest, ApiError } from "./api-client";
 import { reportUnexpected } from "./monitoring";
 
-vi.mock("./monitoring", async (original) => ({
+vi.mock("@gobook/api-client/monitoring", async (original) => ({
   ...(await original<typeof import("./monitoring")>()),
   reportUnexpected: vi.fn(),
 }));

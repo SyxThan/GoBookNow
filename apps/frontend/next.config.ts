@@ -27,6 +27,7 @@ const csp = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  transpilePackages: ["@gobook/ui", "@gobook/api-client", "@gobook/auth"],
   async headers() {
     return [
       {

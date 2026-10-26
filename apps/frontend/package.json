@@ -19,7 +19,10 @@
     "@zxing/browser": "^0.2.1",
     "next": "16.3.5",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "@gobook/ui": "workspace:*",
+    "@gobook/api-client": "workspace:*",
+    "@gobook/auth": "workspace:*"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
