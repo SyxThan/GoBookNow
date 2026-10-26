@@ -30,6 +30,7 @@ jobs:
       BACKEND_BASE_URL: http://127.0.0.1:3101
       VENDOR_E2E_BASE_URL: http://127.0.0.1:3102
       ADMIN_E2E_BASE_URL: http://127.0.0.1:3103
+      E2E_REVIEW_SCREENSHOTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

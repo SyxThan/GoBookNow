@@ -41,6 +41,7 @@ const names: Record<string, string> = {
   onboarding: "Đăng ký đối tác",
   application: "Đơn đăng ký",
   status: "Trạng thái xét duyệt",
+  start: "Khu vực của bạn",
   "check-in": "Check-in",
   "vendor-applications": "Hồ sơ đối tác",
   categories: "Danh mục",
@@ -95,12 +96,16 @@ export function VendorPortalShell({ children }: { children: ReactNode }) {
       />
       <PortalGuard
         roles={
-          pathname === "/profile" || pathname.startsWith("/onboarding/")
+          pathname === "/profile" ||
+          pathname === "/start" ||
+          pathname.startsWith("/onboarding/")
             ? ["CUSTOMER", "VENDOR"]
             : ["VENDOR"]
         }
         requireApprovedVendor={
-          pathname !== "/profile" && !pathname.startsWith("/onboarding/")
+          pathname !== "/profile" &&
+          pathname !== "/start" &&
+          !pathname.startsWith("/onboarding/")
         }
       >
         {children}

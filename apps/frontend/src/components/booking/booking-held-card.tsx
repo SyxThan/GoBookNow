@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 import type { BookingHoldResponse } from "@/lib/api-client";
 import { useCountdown } from "@/hooks/use-countdown";
 import {
@@ -57,8 +58,8 @@ export function BookingHeldCard({
           Booking của bạn đang được giữ tạm thời.
         </h1>
         <p className="mt-3 text-sm text-ink">
-          Booking <strong className="text-ink">{booking.bookingCode}</strong>{" "}
-          · <StatusBadge status={booking.status} />
+          Booking <strong className="text-ink">{booking.bookingCode}</strong> ·{" "}
+          <StatusBadge status={booking.status} />
         </p>
       </div>
 
@@ -75,7 +76,17 @@ export function BookingHeldCard({
             label="Đơn giá chính thức"
             value={formatMoney(item.unitPriceAmount, booking.currency)}
           />
-          <HeldRow label="Trạng thái giữ chỗ" value={({ HELD: "Đang giữ chỗ", CONFIRMED: "Đã xác nhận", RELEASED: "Đã trả chỗ", EXPIRED: "Đã hết hạn" })[item.reservation.status]} />
+          <HeldRow
+            label="Trạng thái giữ chỗ"
+            value={
+              {
+                HELD: "Đang giữ chỗ",
+                CONFIRMED: "Đã xác nhận",
+                RELEASED: "Đã trả chỗ",
+                EXPIRED: "Đã hết hạn",
+              }[item.reservation.status]
+            }
+          />
           {booking.voucherCode && (
             <HeldRow
               label="Tạm tính"
@@ -96,8 +107,8 @@ export function BookingHeldCard({
           </div>
           {priceChanged && (
             <p className="rounded-xl border border-warning/30 bg-sun/30 p-3 text-warning">
-              Giá đã được cập nhật trước khi giữ chỗ. Giá phía trên
-              là giá trị chính thức đã được xác nhận.
+              Giá đã được cập nhật trước khi giữ chỗ. Giá phía trên là giá trị
+              chính thức đã được xác nhận.
             </p>
           )}
         </dl>
@@ -179,6 +190,21 @@ export function BookingHeldCard({
             Bạn sẽ được chuyển sang trang thanh toán bảo mật của SePay để quét
             mã QR.
           </p>
+          <p className="mt-5 text-sm text-muted">
+            Bạn có thể quay lại kiểm tra đơn này bất cứ lúc nào trong Đơn của
+            tôi.
+          </p>
+          <div className="mt-4 grid gap-2">
+            <Link
+              className="secondary-button"
+              href={`/bookings/${encodeURIComponent(booking.id)}`}
+            >
+              Xem chi tiết đơn
+            </Link>
+            <Link className="ghost-button" href="/bookings">
+              Đơn của tôi
+            </Link>
+          </div>
         </aside>
       </div>
     </section>

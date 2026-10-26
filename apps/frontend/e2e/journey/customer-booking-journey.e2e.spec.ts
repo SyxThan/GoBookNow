@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type { Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { test, expect } from "./fixtures";
 
 async function review(page: Page, name: string) {
@@ -100,6 +101,161 @@ async function initiateAndReturn(page: Page) {
   await page.getByRole("link", { name: "Quay lại GoBook" }).click();
   await expect(page).toHaveURL(/\/payment\/result\?paymentId=/);
 }
+
+test("Customer recovers the same pending booking across pages, reloads and a new browser session", async ({
+  page,
+  browser,
+  domain,
+  catalog,
+  provider,
+}) => {
+  const email = await registerAndLogin(page);
+  await page.goto("/bookings");
+  await expect(
+    page.getByRole("heading", { name: "Chưa có đơn phù hợp" }),
+  ).toBeVisible();
+  await review(page, "history-empty");
+  await page.goto("/services");
+  const bookingId = await selectAndHold(page, catalog.title);
+  const held = await domain.loadBooking(bookingId);
+  const expiresAt = held.expiresAt?.getTime();
+  await page.goto("/");
+  if (page.viewportSize()!.width < 1024)
+    await page.getByRole("button", { name: "Mở menu" }).click();
+  await page
+    .getByRole("link", { name: "Đơn của tôi", exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Đơn đặt chỗ của tôi" }),
+  ).toBeVisible();
+  await expect(page.getByText(held.bookingCode, { exact: true })).toBeVisible();
+  const historyA11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(historyA11y.violations.map((item) => item.id)).toEqual([]);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth + 1,
+    ),
+  ).toBe(true);
+  const pendingTab = page.getByRole("button", { name: "Chờ xử lý", exact: true });
+  await pendingTab.focus();
+  await page.keyboard.press("Enter");
+  await expect(pendingTab).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(held.bookingCode, { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Tất cả", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(held.bookingCode, { exact: true })).toBeVisible();
+  await review(page, "history-pending");
+  await page.getByRole("link", { name: /Thanh toán ngay/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/bookings/${bookingId}$`));
+  await expect(
+    page.getByRole("heading", { name: "Chi tiết đặt chỗ" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("550.000 ₫", { exact: true }).first(),
+  ).toBeVisible();
+  const detailA11y = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(detailA11y.violations.map((item) => item.id)).toEqual([]);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth + 1,
+    ),
+  ).toBe(true);
+  await review(page, "history-detail-pending");
+  expect(await domain.prisma.payment.count({ where: { bookingId } })).toBe(0);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Thanh toán ngay" }),
+  ).toBeVisible();
+  expect((await domain.loadBooking(bookingId)).expiresAt?.getTime()).toBe(
+    expiresAt,
+  );
+
+  await page.getByRole("button", { name: "Thanh toán ngay" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Controlled checkout" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Quay lại GoBook" }).click();
+  await page.goto("/");
+  await page.goto("/bookings");
+  await expect(page.getByText(held.bookingCode, { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: /Xem trạng thái/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Đang chờ xác nhận thanh toán" }),
+  ).toBeVisible();
+  await review(page, "history-detail-awaiting-ipn");
+  await expect(
+    page.getByRole("button", { name: "Thanh toán ngay" }),
+  ).toHaveCount(0);
+  expect(await domain.prisma.payment.count({ where: { bookingId } })).toBe(1);
+  const attempt = await domain.prisma.paymentAttempt.findFirstOrThrow({
+    where: { payment: { bookingId } },
+  });
+  expect(provider.posts).toBe(1);
+  expect(attempt.merchantReference).toBe(provider.invoice);
+  expect((await domain.loadBooking(bookingId)).expiresAt?.getTime()).toBe(
+    expiresAt,
+  );
+
+  const width = page.viewportSize()?.width ?? 1280;
+  await page.context().close();
+  const nextContext = await browser.newContext({
+    baseURL: process.env.E2E_BASE_URL,
+    viewport: { width, height: 820 },
+  });
+  try {
+    const anotherDevice = await nextContext.newPage();
+    await anotherDevice.goto("/login");
+    await anotherDevice.getByLabel("Email", { exact: true }).fill(email);
+    await anotherDevice
+      .getByLabel("Mật khẩu", { exact: true })
+      .fill("E2e-Customer-Password-2026");
+    await anotherDevice
+      .getByRole("button", { name: "Đăng nhập", exact: true })
+      .click();
+    await expect(anotherDevice).toHaveURL(/\/services$/);
+    await anotherDevice.goto("/bookings");
+    await expect(
+      anotherDevice.getByText(held.bookingCode, { exact: true }),
+    ).toBeVisible();
+    await anotherDevice.getByRole("link", { name: /Xem trạng thái/ }).click();
+    await expect(anotherDevice).toHaveURL(
+      new RegExp(`/bookings/${bookingId}$`),
+    );
+    await expect(
+      anotherDevice.getByRole("heading", {
+        name: "Đang chờ xác nhận thanh toán",
+      }),
+    ).toBeVisible();
+    await domain.success(bookingId);
+    await anotherDevice.getByRole("button", { name: "Kiểm tra lại" }).click();
+    await expect(
+      anotherDevice.getByRole("heading", { name: "Đã xác nhận" }),
+    ).toBeVisible();
+    await expect(
+      anotherDevice.getByRole("link", { name: "Xem vé QR" }),
+    ).toBeVisible();
+    await review(anotherDevice, "history-confirmed-new-session");
+    expect(
+      await domain.prisma.booking.count({ where: { id: bookingId } }),
+    ).toBe(1);
+    expect(
+      await domain.prisma.paymentAttempt.count({
+        where: { payment: { bookingId } },
+      }),
+    ).toBe(1);
+  } finally {
+    await nextContext.close();
+  }
+});
 
 function vnd(value: string) {
   return BigInt(value.replace(/[^0-9]/g, ""));
@@ -498,6 +654,15 @@ test("Expired hold releases capacity; late payment keeps booking expired with pe
   expect(twice).toEqual(once);
   expect(await domain.available(catalog.slot.id)).toBe(5);
   expect(await domain.prisma.ticket.count()).toBe(0);
+  await page.goto("/bookings");
+  await expect(page.getByText(held.bookingCode, { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: /Xem chi tiết/ }).click();
+  await expect(page.getByRole("heading", { name: "Đã hết hạn" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Thanh toán ngay" }),
+  ).toHaveCount(0);
+  await review(page, "history-expired");
+  await page.goto(`/payment/result?paymentId=${once.payment!.id}`);
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Phiên thanh toán đã hết hạn" }),
@@ -540,6 +705,14 @@ test("Expired hold releases capacity; late payment keeps booking expired with pe
   expect(refunds).toHaveLength(1);
   expect(refunds[0].status).toBe("PENDING");
   expect(refunds[0].amount).toBe(held.totalAmount);
+  await page.goto(`/bookings/${id}`);
+  await expect(
+    page.getByRole("heading", { name: "Đang xử lý hoàn tiền" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Đã ghi nhận tiền sau khi đơn hết hạn/),
+  ).toBeVisible();
+  await review(page, "history-refund-pending");
   expect(
     await domain.prisma.paymentReconciliation.count({
       where: { paymentId: payment.id },

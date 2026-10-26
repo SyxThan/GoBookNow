@@ -23,7 +23,7 @@ function snapshot() {
     return null;
   }
 }
-const partnerUrl = `${process.env.NEXT_PUBLIC_VENDOR_URL ?? "http://localhost:3002"}/onboarding/application`;
+const partnerUrl = `${process.env.NEXT_PUBLIC_VENDOR_URL ?? "http://localhost:3002"}/start`;
 
 export function Brand() {
   return (
@@ -83,6 +83,16 @@ export function SiteShell({ children }: { children: ReactNode }) {
               Khám phá
             </Link>
             <Link href="/#cach-dat">Cách đặt chỗ</Link>
+            <Link
+              href="/bookings"
+              aria-current={
+                pathname === "/bookings" || pathname.startsWith("/bookings/")
+                  ? "page"
+                  : undefined
+              }
+            >
+              Đơn của tôi
+            </Link>
             <Link href={partnerUrl}>
               Dành cho đối tác <span aria-hidden="true">↗</span>
             </Link>
@@ -156,7 +166,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           <nav aria-label="Menu di động" className="mt-6 grid gap-3">
             {[
               ["/services", "Khám phá trải nghiệm"],
-              ["/bookings", "Đặt chỗ & vé của tôi"],
+              ["/bookings", "Đơn của tôi"],
               [partnerUrl, "Dành cho đối tác"],
               ...(token
                 ? [[account, "Tài khoản của bạn"]]
@@ -203,7 +213,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             className="grid grid-cols-2 gap-x-10 gap-y-3 text-sm"
           >
             <Link href="/services">Tìm trải nghiệm</Link>
-            <Link href="/bookings">Đặt chỗ & vé</Link>
+            <Link href="/bookings">Đơn của tôi</Link>
             <Link href={partnerUrl}>Trở thành đối tác</Link>
             <Link href="/#cach-dat">Hướng dẫn đặt chỗ</Link>
           </nav>

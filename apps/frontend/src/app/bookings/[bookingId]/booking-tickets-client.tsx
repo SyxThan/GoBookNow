@@ -60,6 +60,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
     queryFn: ({ signal }) =>
       getBookingTickets(bookingId, accessToken, setAccessToken, signal),
     retry: false,
+    refetchOnMount: "always",
   });
 
   const previewMutation = useMutation({
@@ -209,8 +210,14 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
 
   const booking = ticketQuery.data;
 
+  if (
+    booking.bookingStatus === "PENDING_PAYMENT" ||
+    booking.bookingStatus === "EXPIRED"
+  )
+    return null;
+
   return (
-    <main className="min-h-[70vh] bg-canvas px-5 py-10 text-ink">
+    <section id="tickets" className="bg-canvas px-5 py-10 text-ink">
       <div className="mx-auto max-w-5xl">
         <Link href="/" className="text-sm text-info hover:text-info">
           ← Trang chủ
@@ -297,7 +304,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
           onClose={closeCancellation}
         />
       ) : null}
-    </main>
+    </section>
   );
 }
 

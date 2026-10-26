@@ -113,3 +113,20 @@ All 23 App Router page patterns have intentional UI. The visual fixture exercise
 | Loading / error / 404 | Matching skeletons, recovery and real links | Reviewed 404, network error and empty states | V, S |
 
 The matrix distinguishes executed real actions from presentation checks. It does not claim that every image-storage, document-upload, every CRUD transition or every hardware-camera path was newly exercised end to end. Financial regression evidence is the 101-test backend integration suite plus the real Customer journeys.
+
+## Customer booking recovery update
+
+The `/bookings` row above describes the original device-session implementation.
+It has since been replaced by authenticated, paginated PostgreSQL history,
+and `/bookings/[bookingId]` now includes an owned payment tracking panel above
+the existing ticket/cancellation/review sections. See
+[`CUSTOMER_BOOKING_HISTORY.md`](CUSTOMER_BOOKING_HISTORY.md) for the current
+API, view states, safe payment actions and regression coverage.
+
+The Customer site's partner link now opens `/start` on the Vendor origin.
+After a Vendor portal login, that route checks the authenticated Vendor profile:
+approved partners enter `/dashboard`, while new or pending partners continue at
+`/onboarding/application`. Portal sessions remain separate across origins, so a
+Customer site login may require a second login on the Vendor portal. The
+session guard has a bounded request, error recovery and a direct login link;
+the routing decision never relies on a role claim from browser storage alone.
