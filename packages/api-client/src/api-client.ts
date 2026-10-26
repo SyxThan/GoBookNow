@@ -2,9 +2,10 @@ import { reportUnexpected, validRequestId } from "./monitoring";
 import { rememberBooking } from "./recent-bookings";
 import { clearCheckoutDraft, clearHeldBooking, clearHoldAttempt } from "./booking-storage";
 
+const PORTAL_KIND = process.env.NEXT_PUBLIC_PORTAL_KIND ?? "customer";
 const correlation = () => ({
   "X-Request-Id": crypto.randomUUID(),
-  "X-Portal": process.env.NEXT_PUBLIC_PORTAL_KIND ?? "customer",
+  "X-Portal": PORTAL_KIND,
 });
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
@@ -479,11 +480,12 @@ export function listPublicSlots(
   );
 }
 
-async function refreshAccessToken(): Promise<string> {
+async function refreshAccessToken(signal?: AbortSignal | null): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
     method: "POST",
     credentials: "include",
     headers: correlation(),
+    signal,
   });
   if (!response.ok) throw await readError(response);
   return ((await response.json()) as AccessTokenPayload).accessToken;
@@ -545,6 +547,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("X-Request-Id", crypto.randomUUID());
+  headers.set("X-Portal", PORTAL_KIND);
   const isFormData =
     typeof FormData !== "undefined" && init.body instanceof FormData;
   if (init.body && !isFormData && !headers.has("Content-Type")) {
@@ -560,12 +563,13 @@ export async function apiRequest<T>(
 
   if (response.status === 401 && allowRefresh) {
     try {
-      const refreshedToken = await refreshAccessToken();
+      const refreshedToken = await refreshAccessToken(init.signal);
       onToken(refreshedToken);
       return apiRequest<T>(path, init, refreshedToken, onToken, false);
-    } catch {
-      onToken(null);
-      throw new ApiError(401, "Phiên đăng nhập đã hết hạn.");
+    } catch (error) {
+      // A network failure or a cancelled request does not revoke the session.
+      if (error instanceof ApiError && error.status === 401) onToken(null);
+      throw error;
     }
   }
 

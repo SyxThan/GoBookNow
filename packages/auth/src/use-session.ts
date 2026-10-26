@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 const key = "gobook.accessToken";
 function snapshot() {
   try {
@@ -28,6 +28,8 @@ function subscribe(callback: () => void) {
 }
 export function setPortalToken(token: string | null) {
   const before = snapshot();
+  // A failed refresh with no stored token must not restart session verification.
+  if (before === token) return;
   if (token) sessionStorage.setItem(key, token);
   else sessionStorage.removeItem(key);
   window.dispatchEvent(
@@ -47,6 +49,5 @@ export function usePortalSession() {
     const timer = setTimeout(() => setReady(true), 0);
     return () => clearTimeout(timer);
   }, []);
-  const onToken = useCallback(setPortalToken, []);
-  return { ready, token, onToken };
+  return { ready, token, onToken: setPortalToken };
 }

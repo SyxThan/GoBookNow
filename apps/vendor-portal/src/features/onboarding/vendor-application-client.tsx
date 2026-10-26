@@ -4,6 +4,8 @@ import { setPortalToken } from "@gobook/auth/use-session";
 import Link from "next/link";
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
 import { ApiError, apiDownload, apiRequest } from "@/lib/api-client";
+import { PageHeading, StatusBadge } from "@gobook/ui/primitives";
+import { Icon } from "@gobook/ui/icon";
 
 type VendorStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED" | "SUSPENDED";
 type ApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -198,78 +200,142 @@ export default function VendorApplicationClient() {
   }
 
   if (loading) return <Centered>Đang tải hồ sơ xét duyệt…</Centered>;
-  if (authRequired) return <p role="status">Đang chuyển đến đăng nhập…</p>;
+  if (authRequired)
+    return (
+      <Centered>
+        <div className="panel max-w-lg p-8 text-center">
+          <h1 className="text-2xl">Vui lòng đăng nhập lại</h1>
+          <p className="mt-3 text-sm text-muted">
+            Phiên đăng nhập đã hết hạn. Đăng nhập để tiếp tục hoàn thiện hồ sơ.
+          </p>
+          <Link
+            className="primary-button mt-6"
+            href="/login?next=%2Fonboarding%2Fapplication"
+          >
+            Đăng nhập cổng đối tác
+          </Link>
+        </div>
+      </Centered>
+    );
+  const currentStep =
+    vendor?.status === "APPROVED"
+      ? 3
+      : application?.status === "PENDING"
+        ? 2
+        : vendor
+          ? 1
+          : 0;
 
   return (
-    <main className="min-h-[70vh] bg-canvas text-ink">
-      <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
-        <header className="flex flex-wrap items-end justify-between gap-5 border-b border-line/10 pb-8">
-          <div>
-            <p className="eyebrow">Vendor Onboarding</p>
-            <h1 className="mt-3 text-4xl font-bold">Đăng ký Vendor</h1>
-            <p className="mt-3 text-muted">
-              Gửi hồ sơ, bổ sung tài liệu và theo dõi kết quả xét duyệt.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link href="/profile" className="secondary-button">
-              Hồ sơ Vendor
-            </Link>
-          </div>
-        </header>
-        {error && <Banner tone="error">{error}</Banner>}
-        {notice && <Banner tone="success">{notice}</Banner>}
-
-        {!vendor ? (
-          <section className="panel mt-10 p-8 text-center">
-            <h2 className="text-2xl font-bold">Bạn chưa có hồ sơ Vendor</h2>
-            <p className="mt-3 text-muted">
-              Tạo hồ sơ tổ chức trước khi bắt đầu xét duyệt.
-            </p>
-            <Link href="/profile" className="primary-button mt-6 inline-flex">
-              Tạo Vendor Profile
-            </Link>
-          </section>
-        ) : (
-          <div className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-            <section className="panel p-6 sm:p-8">
-              <p className="section-label">{vendor.displayName}</p>
-              <div className="mt-4 flex items-center justify-between gap-4">
-                <h2 className="text-2xl font-bold">
-                  {STATUS_LABELS[vendor.status]}
-                </h2>
-                <span className="rounded-full bg-sun/30 px-3 py-1 text-xs font-bold text-info">
-                  {vendor.status}
+    <main className="page-wrap">
+      <PageHeading
+        eyebrow="Hành trình đối tác"
+        title={
+          vendor?.status === "APPROVED"
+            ? "Hồ sơ đối tác"
+            : "Trở thành đối tác GoBookNow"
+        }
+        action={
+          <Link
+            href={vendor?.status === "APPROVED" ? "/dashboard" : "/profile"}
+            className="secondary-button"
+          >
+            {vendor?.status === "APPROVED"
+              ? "Vào trang quản lý"
+              : "Thông tin đối tác"}
+            <Icon name="arrow" size={18} />
+          </Link>
+        }
+      >
+        {vendor?.status === "APPROVED"
+          ? "Đối tác đã được phê duyệt. Xem hồ sơ hoặc vào trang quản lý để bắt đầu kinh doanh."
+          : "Hoàn thiện thông tin, gửi hồ sơ và theo dõi kết quả xét duyệt ngay tại đây."}
+      </PageHeading>
+      <ol
+        aria-label="Các bước đăng ký đối tác"
+        className="grid gap-3 sm:grid-cols-3"
+      >
+        {["Tạo hồ sơ đối tác", "Gửi hồ sơ xét duyệt", "Bắt đầu kinh doanh"].map(
+          (label, index) => {
+            const complete = index < currentStep;
+            return (
+              <li
+                key={label}
+                aria-current={index === currentStep ? "step" : undefined}
+                className={`flex items-center gap-3 rounded-xl border-2 border-line p-4 ${complete ? "bg-mint" : index === currentStep ? "bg-sun/40" : "bg-surface"}`}
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-full border-2 border-line bg-canvas text-sm font-bold">
+                  {complete ? <Icon name="check" size={16} /> : index + 1}
                 </span>
-              </div>
-              <StatusAction
-                vendor={vendor}
-                application={application}
-                busy={busy}
-                onSubmit={submitApplication}
-              />
-              {application?.status === "PENDING" && (
-                <UploadForm
-                  busy={busy}
-                  count={application.documents.length}
-                  documentType={documentType}
-                  file={file}
-                  onDocumentType={setDocumentType}
-                  onFile={setFile}
-                  onSubmit={uploadDocument}
-                />
-              )}
-            </section>
-            <section className="space-y-6">
-              <Documents
-                documents={application?.documents ?? []}
-                onDownload={download}
-              />
-              <Timeline history={application?.history ?? []} />
-            </section>
-          </div>
+                <span className="text-sm font-semibold">{label}</span>
+              </li>
+            );
+          },
         )}
-      </div>
+      </ol>
+      {error && (
+        <Banner tone="error">
+          {error}{" "}
+          <button
+            className="ml-2 font-bold underline"
+            onClick={() => void load(accessToken)}
+          >
+            Thử lại
+          </button>
+        </Banner>
+      )}
+      {notice && <Banner tone="success">{notice}</Banner>}
+
+      {!vendor && !error ? (
+        <section className="panel mt-10 p-8 text-center">
+          <span className="mx-auto mb-5 grid size-16 place-items-center rounded-2xl border-2 border-line bg-lavender">
+            <Icon name="shield" size={32} />
+          </span>
+          <h2 className="text-2xl font-bold">Bắt đầu với thông tin đối tác</h2>
+          <p className="mt-3 text-muted">
+            Tạo hồ sơ tổ chức trước khi bắt đầu xét duyệt.
+          </p>
+          <Link href="/profile" className="primary-button mt-6 inline-flex">
+            Tạo hồ sơ đối tác <Icon name="arrow" size={18} />
+          </Link>
+        </section>
+      ) : vendor ? (
+        <div className="mt-10 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <section className="panel p-6 sm:p-8">
+            <p className="section-label">{vendor.displayName}</p>
+            <div className="mt-4 flex items-center justify-between gap-4">
+              <h2 className="text-2xl font-bold">
+                {STATUS_LABELS[vendor.status]}
+              </h2>
+              <StatusBadge status={vendor.status} />
+            </div>
+            <StatusAction
+              vendor={vendor}
+              application={application}
+              busy={busy}
+              onSubmit={submitApplication}
+            />
+            {application?.status === "PENDING" && (
+              <UploadForm
+                busy={busy}
+                count={application.documents.length}
+                documentType={documentType}
+                file={file}
+                onDocumentType={setDocumentType}
+                onFile={setFile}
+                onSubmit={uploadDocument}
+              />
+            )}
+          </section>
+          <section className="space-y-6">
+            <Documents
+              documents={application?.documents ?? []}
+              onDownload={download}
+            />
+            <Timeline history={application?.history ?? []} />
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -294,7 +360,9 @@ function StatusAction({
           </p>
         )}
         <p className="text-sm leading-6 text-muted">
-          Mỗi lần gửi lại tạo một application mới và giữ nguyên lịch sử cũ.
+          {vendor.status === "REJECTED"
+            ? "Cập nhật thông tin theo góp ý trước khi gửi lại hồ sơ. Bạn vẫn có thể xem các lần xét duyệt trước trong lịch sử xử lý."
+            : "Kiểm tra thông tin đối tác trước khi gửi. Bạn có thể bổ sung tài liệu khi hồ sơ đang được xét duyệt."}
         </p>
         <button
           onClick={onSubmit}
@@ -305,7 +373,7 @@ function StatusAction({
             ? "Đang gửi…"
             : vendor.status === "REJECTED"
               ? "Gửi lại hồ sơ"
-              : "Submit Application"}
+              : "Gửi hồ sơ xét duyệt"}
         </button>
       </div>
     );
@@ -314,9 +382,11 @@ function StatusAction({
     Exclude<VendorStatus, "DRAFT" | "REJECTED">,
     string
   > = {
-    PENDING: "Admin đang xem xét hồ sơ. Bạn có thể bổ sung tối đa 5 tài liệu.",
-    APPROVED: "Onboarding hoàn tất. Tài khoản đã được cấp quyền VENDOR.",
-    SUSPENDED: "Vendor đang tạm ngưng và không thể gửi hồ sơ mới.",
+    PENDING:
+      "Đội ngũ GoBookNow đang xem xét hồ sơ. Bạn có thể bổ sung tối đa 5 tài liệu.",
+    APPROVED:
+      "Hồ sơ đã được phê duyệt. Bạn có thể quản lý dịch vụ và tiếp nhận đặt chỗ.",
+    SUSPENDED: "Tài khoản đối tác đang tạm ngưng và chưa thể gửi hồ sơ mới.",
   };
   return (
     <p className="mt-7 rounded-2xl bg-canvas p-5 text-sm leading-6 text-ink">
@@ -373,7 +443,7 @@ function UploadForm({
         className="primary-button mt-4"
         disabled={busy || !file || count >= 5}
       >
-        Upload
+        {busy ? "Đang tải lên…" : "Tải tài liệu lên"}
       </button>
     </form>
   );
@@ -435,7 +505,7 @@ function Timeline({ history }: { history: History[] }) {
               <p className="mt-1 font-bold">
                 {entry.fromStatus
                   ? `${STATUS_LABELS[entry.fromStatus]} → `
-                  : "Submitted · "}
+                  : "Đã gửi · "}
                 {STATUS_LABELS[entry.toStatus]}
               </p>
               {entry.note && (

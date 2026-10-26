@@ -8,6 +8,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(rootDirectory, "src"),
+      "next/navigation": path.resolve(
+        rootDirectory,
+        "node_modules/next/navigation.js",
+      ),
+      "next/link": path.resolve(rootDirectory, "node_modules/next/link.js"),
     },
   },
   test: {

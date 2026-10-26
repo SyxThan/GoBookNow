@@ -5,9 +5,9 @@ export default function Login() {
   return (
     <Suspense fallback={<p role="status">Đang tải…</p>}>
       <PortalLogin
-        title="Đăng nhập GoBookNow Vendor"
-        description="Dành cho đối tác và tài khoản đăng ký trở thành đối tác."
-        destination="/dashboard"
+        title="Chào mừng đối tác"
+        description="Dùng tài khoản GoBookNow của bạn để đăng ký đối tác hoặc quản lý hoạt động kinh doanh. Cổng đối tác có phiên đăng nhập riêng; nếu đã đăng nhập ở trang khách hàng, bạn cần đăng nhập thêm tại đây."
+        destination="/onboarding/application"
         footer={
           <p>
             Chưa có tài khoản?{" "}
