@@ -4,15 +4,20 @@
   "private": true,
   "packageManager": "pnpm@11.24.0",
   "scripts": {
-    "dev": "pnpm --parallel --stream --filter backend --filter frontend run dev",
-    "build": "turbo build",
-    "lint": "turbo lint",
-    "test": "turbo test",
+    "dev": "pnpm --parallel --stream --filter './apps/*' run dev",
+    "build": "pnpm --filter './apps/*' --workspace-concurrency=1 run build",
+    "lint": "pnpm --filter './apps/*' --workspace-concurrency=1 run lint",
+    "test": "pnpm --filter './apps/*' --workspace-concurrency=1 run test",
     "dev:frontend": "pnpm --filter frontend dev",
     "dev:backend": "pnpm --filter backend start:dev",
     "test:e2e:prepare": "pnpm --filter backend test:browser:prepare",
     "test:e2e": "pnpm --filter backend test:browser",
-    "test:e2e:smoke": "pnpm --filter frontend exec playwright test --config playwright.smoke.config.ts"
+    "test:e2e:smoke": "pnpm --filter frontend exec playwright test --config playwright.smoke.config.ts",
+    "dev:customer": "pnpm --filter frontend dev",
+    "dev:vendor": "pnpm --filter vendor-portal dev",
+    "dev:admin": "pnpm --filter admin-console dev",
+    "build:frontends": "pnpm --filter frontend --filter vendor-portal --filter admin-console --workspace-concurrency=1 run build",
+    "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "turbo": "^2.10.13"

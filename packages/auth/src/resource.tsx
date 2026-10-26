@@ -23,7 +23,11 @@ export function useWorkspaceRequest() {
   );
   return { ready, request };
 }
-export function useWorkspaceQuery<T>(path: string, key: readonly unknown[], enabled = true) {
+export function useWorkspaceQuery<T>(
+  path: string,
+  key: readonly unknown[],
+  enabled = true,
+) {
   const { ready, request } = useWorkspaceRequest();
   const query = useQuery<T>({
     queryKey: key,

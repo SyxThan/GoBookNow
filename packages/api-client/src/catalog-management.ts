@@ -4,8 +4,8 @@ export type ManagedService = {
   title: string;
   slug: string;
   kind: ServiceKind;
-  categoryId: string;
-  category?: { name: string };
+  categoryId?: string;
+  category?: { id: string; name: string };
   summary: string | null;
   description: string | null;
   thumbnailUrl: string | null;

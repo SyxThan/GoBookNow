@@ -2,13 +2,21 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 const key = "gobook.accessToken";
 function snapshot() {
-  try { return sessionStorage.getItem(key); } catch { return null; }
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 function identity(token: string | null) {
   try {
-    const value = JSON.parse(atob(token!.split(".")[1].replaceAll("-", "+").replaceAll("_", "/")));
+    const value = JSON.parse(
+      atob(token!.split(".")[1].replaceAll("-", "+").replaceAll("_", "/")),
+    );
     return JSON.stringify([value.sub, value.roles]);
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 function subscribe(callback: () => void) {
   window.addEventListener("gobook:session", callback);
@@ -22,9 +30,15 @@ export function setPortalToken(token: string | null) {
   const before = snapshot();
   if (token) sessionStorage.setItem(key, token);
   else sessionStorage.removeItem(key);
-  window.dispatchEvent(new CustomEvent("gobook:session", {
-    detail: { sameIdentity: Boolean(token && identity(before) && identity(before) === identity(token)) },
-  }));
+  window.dispatchEvent(
+    new CustomEvent("gobook:session", {
+      detail: {
+        sameIdentity: Boolean(
+          token && identity(before) && identity(before) === identity(token),
+        ),
+      },
+    }),
+  );
 }
 export function usePortalSession() {
   const token = useSyncExternalStore(subscribe, snapshot, () => null);

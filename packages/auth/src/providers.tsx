@@ -16,10 +16,13 @@ export function Providers({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const clear = (event: Event) => {
-      if (!(event instanceof CustomEvent) || !event.detail?.sameIdentity) queryClient.clear();
+      if (!(event instanceof CustomEvent) || !event.detail?.sameIdentity)
+        queryClient.clear();
     };
     window.addEventListener("gobook:session", clear);
     return () => window.removeEventListener("gobook:session", clear);
   }, [queryClient]);
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
 }
