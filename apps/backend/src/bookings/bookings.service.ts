@@ -90,6 +90,17 @@ export class BookingsService {
     private readonly cancellationPolicies: CancellationPolicyProvider,
     private readonly vouchers: VouchersService,
   ) {
+    // Reject an incomplete deployment before accepting any booking requests.
+    try {
+      CommissionCalculator.parseBps(
+        this.config.get<string>('PLATFORM_COMMISSION_BPS'),
+      );
+    } catch (error: unknown) {
+      logger.emit('error', 'booking.configuration.invalid', {
+        errorCode: 'PLATFORM_COMMISSION_BPS_INVALID',
+      });
+      throw error;
+    }
     this.holdTtlMinutes = this.parseHoldTtlMinutes(
       this.config.get<string>('BOOKING_HOLD_TTL_MINUTES') ?? '10',
     );

@@ -80,6 +80,10 @@ describe('SepayPaymentProvider', () => {
       customer_id: checkoutInput.customerId,
       success_url:
         'https://example.test/payment/success?paymentId=11111111-1111-4111-8111-111111111111&return=success',
+      error_url:
+        'http://localhost:3000/payment/result?paymentId=11111111-1111-4111-8111-111111111111&return=error',
+      cancel_url:
+        'http://localhost:3000/payment/result?paymentId=11111111-1111-4111-8111-111111111111&return=cancel',
     });
     expect(result).toEqual({
       paymentUrl: 'https://pay-sandbox.sepay.vn/v1/checkout/init',
@@ -121,7 +125,7 @@ describe('SepayPaymentProvider', () => {
     );
   });
 
-  it('defaults to sandbox and allows omitted callback URLs', async () => {
+  it('defaults to sandbox and supplies local result callbacks when omitted', async () => {
     const provider = new SepayPaymentProvider(
       config({
         SEPAY_MERCHANT_ID: 'merchant-test',
@@ -132,6 +136,63 @@ describe('SepayPaymentProvider', () => {
     expect(result.paymentUrl).toBe(
       'https://pay-sandbox.sepay.vn/v1/checkout/init',
     );
+    expect(sdk.initOneTimePaymentFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url: `http://localhost:3000/payment/result?paymentId=${checkoutInput.paymentId}&return=success`,
+        error_url: `http://localhost:3000/payment/result?paymentId=${checkoutInput.paymentId}&return=error`,
+        cancel_url: `http://localhost:3000/payment/result?paymentId=${checkoutInput.paymentId}&return=cancel`,
+      }),
+    );
+  });
+
+  it('uses FRONTEND_ORIGIN when callback settings are blank', async () => {
+    const provider = new SepayPaymentProvider(
+      config({
+        SEPAY_MERCHANT_ID: 'merchant-test',
+        SEPAY_SECRET_KEY: 'test-secret',
+        FRONTEND_ORIGIN: 'http://localhost:3200',
+        SEPAY_SUCCESS_URL: ' ',
+        SEPAY_ERROR_URL: '',
+        SEPAY_CANCEL_URL: '',
+      }),
+    );
+    await provider.createCheckout(checkoutInput);
+    expect(sdk.initOneTimePaymentFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success_url: `http://localhost:3200/payment/result?paymentId=${checkoutInput.paymentId}&return=success`,
+        error_url: `http://localhost:3200/payment/result?paymentId=${checkoutInput.paymentId}&return=error`,
+        cancel_url: `http://localhost:3200/payment/result?paymentId=${checkoutInput.paymentId}&return=cancel`,
+      }),
+    );
+  });
+
+  it.each(['javascript:alert(1)', 'https://user:password@example.test/result'])(
+    'rejects unsafe callback URLs (%s)',
+    async (value) => {
+      const provider = new SepayPaymentProvider(
+        config({
+          SEPAY_MERCHANT_ID: 'merchant-test',
+          SEPAY_SECRET_KEY: 'test-secret',
+          SEPAY_SUCCESS_URL: value,
+        }),
+      );
+      await expect(
+        provider.createCheckout(checkoutInput),
+      ).rejects.toMatchObject({ status: 503 });
+    },
+  );
+
+  it('does not silently return production payments to localhost', async () => {
+    const provider = new SepayPaymentProvider(
+      config({
+        SEPAY_ENV: 'production',
+        SEPAY_MERCHANT_ID: 'merchant-test',
+        SEPAY_SECRET_KEY: 'test-secret',
+      }),
+    );
+    await expect(provider.createCheckout(checkoutInput)).rejects.toMatchObject({
+      status: 503,
+    });
   });
 
   it('supports the production environment when explicitly configured', async () => {
@@ -143,6 +204,7 @@ describe('SepayPaymentProvider', () => {
         SEPAY_ENV: 'production',
         SEPAY_MERCHANT_ID: 'merchant-production',
         SEPAY_SECRET_KEY: 'production-secret-placeholder',
+        FRONTEND_ORIGIN: 'https://frontend.test',
       }),
     );
 

@@ -43,6 +43,8 @@ export function friendlyWorkspaceError(error: unknown) {
         "Tài khoản chưa có quyền thực hiện thao tác này. Đối tác cần được phê duyệt." +
         support
       );
+    if (error.status === 409 && error.code === "SERVICE_DELETE_REQUIRES_HIDE")
+      return "Hãy ẩn dịch vụ đang mở bán trước khi xóa." + support;
     if (error.status === 409)
       return (
         "Trạng thái hiện tại chưa cho phép thao tác này. Hãy kiểm tra lịch trùng, chỗ đã được đặt hoặc các điều kiện áp dụng." +

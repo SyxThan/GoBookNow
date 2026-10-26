@@ -376,14 +376,16 @@ export function ServiceEditor({ serviceId }: { serviceId: string }) {
               <div>
                 <h2 className="text-base">Quản lý vòng đời dịch vụ</h2>
                 <p className="mt-1 text-xs text-muted">
-                  Trạng thái và điều kiện xóa được kiểm tra lại trên hệ thống.
+                  {data?.status === "PUBLISHED"
+                    ? "Hãy ẩn dịch vụ đang mở bán trước khi lưu trữ hoặc xóa."
+                    : "Có thể xóa dịch vụ nháp, đã ẩn hoặc đã lưu trữ. Lịch sử đặt chỗ vẫn được giữ nguyên."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
                 {data?.status !== "ARCHIVED" && (
                   <Button
                     variant="secondary"
-                    disabled={action.busy}
+                    disabled={action.busy || data?.status === "PUBLISHED"}
                     onClick={() => setConfirm("archive")}
                   >
                     Lưu trữ
@@ -391,7 +393,7 @@ export function ServiceEditor({ serviceId }: { serviceId: string }) {
                 )}
                 <Button
                   variant="danger"
-                  disabled={action.busy}
+                  disabled={action.busy || data?.status === "PUBLISHED"}
                   onClick={() => setConfirm("delete")}
                 >
                   Xóa dịch vụ
@@ -411,8 +413,9 @@ export function ServiceEditor({ serviceId }: { serviceId: string }) {
             {confirm === "delete" ? "Xóa dịch vụ này?" : "Lưu trữ dịch vụ?"}
           </h2>
           <p className="mt-4 text-sm text-muted">
-            Dịch vụ sẽ không còn được mở bán. Các đặt chỗ và quy định liên quan
-            vẫn được hệ thống kiểm tra.
+            {confirm === "delete"
+              ? "Dịch vụ sẽ được gỡ khỏi danh sách quản lý. Lịch sử đặt chỗ, vé và thanh toán vẫn được giữ nguyên."
+              : "Dịch vụ đã lưu trữ không thể chỉnh sửa, thêm lịch hoặc xuất bản lại. Bạn vẫn có thể xóa dịch vụ khỏi danh sách quản lý."}
           </p>
           <ActionFeedback error={action.error} />
           <div className="mt-6 flex flex-wrap justify-end gap-3">

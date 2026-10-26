@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@11.24.0",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "pnpm --parallel --stream --filter backend --filter frontend run dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",

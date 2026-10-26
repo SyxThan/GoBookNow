@@ -82,7 +82,9 @@ export function toFriendlyBookingError(error: unknown): FriendlyBookingError {
   }
   return {
     kind: "UNKNOWN",
-    message: "Không thể giữ chỗ lúc này. Vui lòng thử lại.",
+    message:
+      "Không thể giữ chỗ lúc này. Vui lòng thử lại." +
+      (error.requestId ? ` Mã hỗ trợ: ${error.requestId}` : ""),
     refetchSlots: false,
   };
 }

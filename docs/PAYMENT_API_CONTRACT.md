@@ -144,24 +144,34 @@ form.submit();
 
 The integration uses the official `sepay-pg-node` SDK with `PURCHASE` and
 `BANK_TRANSFER`. `SEPAY_ENV` defaults to `sandbox`; production is selected only
-through configuration. Optional success/error/cancel URLs are browser redirect
-callbacks, not the server-to-server IPN URL. The backend appends `paymentId`
-and a non-authoritative `return=success|error|cancel` hint to each configured
-callback. Configure all three base URLs to the frontend `/payment/result`
-route. The result page always reads backend state before rendering an outcome.
+through configuration. Success/error/cancel URLs are browser redirect callbacks,
+separate from the server-to-server IPN URL. Blank callback settings default to
+`FRONTEND_ORIGIN/payment/result`; local sandbox also supports
+`http://localhost:3000/payment/result` when no origin is configured. Production
+requires explicit HTTPS callbacks or an HTTPS frontend origin. The backend appends
+`paymentId` and a non-authoritative `return=success|error|cancel` hint to all three
+callbacks. The result page always reads backend state before rendering an outcome.
 
 ```dotenv
 SEPAY_ENV=sandbox
 SEPAY_MERCHANT_ID=
 SEPAY_SECRET_KEY=
 SEPAY_IPN_SECRET=
-SEPAY_SUCCESS_URL=
-SEPAY_ERROR_URL=
-SEPAY_CANCEL_URL=
+SEPAY_SUCCESS_URL=http://localhost:3000/payment/result
+SEPAY_ERROR_URL=http://localhost:3000/payment/result
+SEPAY_CANCEL_URL=http://localhost:3000/payment/result
 ```
 
 Real merchant credentials must stay in local/deployment secrets and must never
 be committed.
+
+Sandbox payments still need an authenticated IPN to confirm bookings and issue
+tickets. The browser returning with `return=success` is insufficient. See the
+root README for the local IPN-only proxy and ngrok setup. Configure the public
+HTTPS `/api/v1/webhooks/sepay/ipn` URL in the sandbox merchant IPN settings with
+`SECRET_KEY` authentication matching `SEPAY_IPN_SECRET`. Localhost is not reachable
+from SePay servers. New callback settings apply when a new checkout form is
+created; an already-open SePay checkout retains its original settings.
 
 The SDK currently types `order_amount` as a JavaScript `number`. The adapter
 keeps money as `bigint` until the provider boundary and refuses values above

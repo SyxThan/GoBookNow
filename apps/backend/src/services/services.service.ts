@@ -299,7 +299,13 @@ export class ServicesService {
       where: {
         id: serviceId,
         deletedAt: null,
-        status: { in: [ServiceStatus.DRAFT, ServiceStatus.HIDDEN] },
+        status: {
+          in: [
+            ServiceStatus.DRAFT,
+            ServiceStatus.HIDDEN,
+            ServiceStatus.ARCHIVED,
+          ],
+        },
       },
       data: { deletedAt: new Date() },
     });
@@ -310,9 +316,10 @@ export class ServicesService {
       select: { status: true },
     });
     if (!service) throw new NotFoundException('Service not found');
-    throw new ConflictException(
-      `Service in ${service.status} status cannot be deleted`,
-    );
+    throw new ConflictException({
+      code: 'SERVICE_DELETE_REQUIRES_HIDE',
+      message: 'Hãy ẩn dịch vụ đang mở bán trước khi xóa.',
+    });
   }
 
   async listPublic(

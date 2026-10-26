@@ -77,35 +77,50 @@ export class SepayPaymentProvider implements PaymentCheckoutProvider {
     return value;
   }
 
-  private getCallbackFields(paymentId: string): Partial<{
+  private getCallbackFields(paymentId: string): {
     success_url: string;
     error_url: string;
     cancel_url: string;
-  }> {
+  } {
     const callbacks = [
       ['success_url', 'SEPAY_SUCCESS_URL'],
       ['error_url', 'SEPAY_ERROR_URL'],
       ['cancel_url', 'SEPAY_CANCEL_URL'],
     ] as const;
 
-    return Object.fromEntries(
-      callbacks.flatMap(([field, configName]) => {
-        const value = this.config.get<string>(configName)?.trim();
-        if (!value) return [];
-
-        const callback = new URL(value);
-        callback.searchParams.set('paymentId', paymentId);
-        callback.searchParams.set(
-          'return',
-          field === 'success_url'
-            ? 'success'
-            : field === 'error_url'
-              ? 'error'
-              : 'cancel',
-        );
-        return [[field, callback.toString()]];
-      }),
-    );
+    const result = {} as Record<(typeof callbacks)[number][0], string>;
+    for (const [field, configName] of callbacks) {
+      const value = this.config.get<string>(configName)?.trim();
+      const frontendOrigin = this.config.get<string>('FRONTEND_ORIGIN')?.trim();
+      const localSandbox =
+        this.getEnvironment() === 'sandbox' &&
+        this.config.get<string>('NODE_ENV') !== 'production';
+      const origin =
+        frontendOrigin || (localSandbox ? 'http://localhost:3000' : undefined);
+      if (!value && !origin) throw this.unavailable();
+      const callback = value
+        ? new URL(value)
+        : new URL('/payment/result', origin);
+      if (
+        !['http:', 'https:'].includes(callback.protocol) ||
+        callback.username ||
+        callback.password ||
+        (!localSandbox && callback.protocol !== 'https:')
+      )
+        throw this.unavailable();
+      callback.searchParams.set('paymentId', paymentId);
+      callback.searchParams.set(
+        'return',
+        field === 'success_url'
+          ? 'success'
+          : field === 'error_url'
+            ? 'error'
+            : 'cancel',
+      );
+      callback.hash = '';
+      result[field] = callback.toString();
+    }
+    return result;
   }
 
   private unavailable(): ServiceUnavailableException {

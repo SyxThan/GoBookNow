@@ -279,6 +279,7 @@ export function BookingTicketsClient({ bookingId }: { bookingId: string }) {
           downloading={downloadingTicketId === selectedTicket.id}
           onClose={closeQr}
           onDownload={() => void downloadQr(selectedTicket)}
+          onRetry={() => void openQr(selectedTicket)}
         />
       ) : null}
       {cancellationOpen ? (
@@ -581,6 +582,7 @@ function QrDialog({
   downloading,
   onClose,
   onDownload,
+  onRetry,
 }: {
   ticket: CustomerTicket;
   qrUrl: string | null;
@@ -589,6 +591,7 @@ function QrDialog({
   downloading: boolean;
   onClose: () => void;
   onDownload: () => void;
+  onRetry: () => void;
 }) {
   return (
     <AccessibleDialog labelledBy="ticket-qr-title" onClose={onClose} className="text-center">
@@ -613,9 +616,18 @@ function QrDialog({
           {loading ? (
             <p role="status">Đang tạo mã QR...</p>
           ) : error ? (
-            <p className="text-danger" role="alert">
-              {error}
-            </p>
+            <div>
+              <p className="break-words text-danger" role="alert">
+                {error}
+              </p>
+              <button
+                type="button"
+                className="secondary-button mt-4"
+                onClick={onRetry}
+              >
+                Thử lại mã QR
+              </button>
+            </div>
           ) : qrUrl ? (
             <Image
               src={qrUrl}
@@ -705,7 +717,12 @@ function ticketQrError(error: unknown): string {
     if (error.status === 404) return "Không tìm thấy vé.";
     if (error.status === 409) return "Vé không còn khả dụng để hiển thị QR.";
   }
-  return "Không thể tạo mã QR. Vui lòng thử lại.";
+  return (
+    "Không thể tạo mã QR. Vui lòng thử lại." +
+    (error instanceof ApiError && error.requestId
+      ? ` Mã hỗ trợ: ${error.requestId}`
+      : "")
+  );
 }
 
 function cancellationErrorMessage(error: unknown): string {

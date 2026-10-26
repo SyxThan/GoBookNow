@@ -566,7 +566,7 @@ describe('Service catalog (e2e, PostgreSQL)', () => {
       .expect(200);
   });
 
-  it('requires PUBLISHED to be hidden before archive and locks archived records', async () => {
+  it('requires PUBLISHED to be hidden before archive and allows archived soft deletion', async () => {
     const vendorAToken = await token(vendorA);
     await request(app.getHttpServer())
       .post(`/api/v1/vendor/services/${serviceId}/archive`)
@@ -593,7 +593,13 @@ describe('Service catalog (e2e, PostgreSQL)', () => {
     await request(app.getHttpServer())
       .delete(`/api/v1/vendor/services/${serviceId}`)
       .auth(vendorAToken, { type: 'bearer' })
-      .expect(409);
+      .expect(204);
+    expect(
+      await prisma.service.findUnique({
+        where: { id: serviceId },
+        select: { status: true, deletedAt: true },
+      }),
+    ).toEqual({ status: ServiceStatus.ARCHIVED, deletedAt: expect.any(Date) });
     await request(app.getHttpServer())
       .get(`/api/v1/services/${serviceSlug}`)
       .expect(404);
@@ -611,7 +617,7 @@ describe('Service catalog (e2e, PostgreSQL)', () => {
       .expect(404);
   });
 
-  it('soft-deletes only DRAFT/HIDDEN and keeps physical rows', async () => {
+  it('soft-deletes DRAFT/HIDDEN and requires PUBLISHED to be hidden first', async () => {
     const vendorAToken = await token(vendorA);
     const draft = await createService(vendorA, {
       categoryId: serviceCategoryId,
@@ -650,7 +656,10 @@ describe('Service catalog (e2e, PostgreSQL)', () => {
     await request(app.getHttpServer())
       .delete(`/api/v1/vendor/services/${hiddenId}`)
       .auth(vendorAToken, { type: 'bearer' })
-      .expect(409);
+      .expect(409)
+      .expect(({ body }) =>
+        expect(body.code).toBe('SERVICE_DELETE_REQUIRES_HIDE'),
+      );
     await request(app.getHttpServer())
       .post(`/api/v1/vendor/services/${hiddenId}/hide`)
       .auth(vendorAToken, { type: 'bearer' })

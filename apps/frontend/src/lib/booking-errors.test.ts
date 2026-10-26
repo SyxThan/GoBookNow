@@ -3,6 +3,21 @@ import { ApiError } from "./api-client";
 import { toFriendlyBookingError } from "./booking-errors";
 
 describe("booking hold errors", () => {
+  it("keeps the support ID for unexpected errors without exposing backend details", () => {
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    const result = toFriendlyBookingError(
+      new ApiError(
+        500,
+        "private backend exception",
+        "INTERNAL_SERVER_ERROR",
+        undefined,
+        requestId,
+      ),
+    );
+    expect(result.message).toContain(`Mã hỗ trợ: ${requestId}`);
+    expect(result.message).not.toContain("private backend exception");
+    expect(result.refetchSlots).toBe(false);
+  });
   it("maps insufficient capacity and requests a Slot refetch", () => {
     expect(
       toFriendlyBookingError(

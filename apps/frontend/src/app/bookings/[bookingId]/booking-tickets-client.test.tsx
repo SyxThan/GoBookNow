@@ -4,6 +4,7 @@ import type { AnchorHTMLAttributes, ImgHTMLAttributes, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cancelBooking,
+  ApiError,
   getBookingTickets,
   getTicketQr,
   previewBookingCancellation,
@@ -105,6 +106,19 @@ function renderTickets() {
 }
 
 describe("BookingTicketsClient", () => {
+  it("shows a safe support ID and retries QR generation inside the dialog", async () => {
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    vi.mocked(getTicketQr)
+      .mockRejectedValueOnce(new ApiError(500, "private signing error", "INTERNAL_SERVER_ERROR", undefined, requestId))
+      .mockResolvedValueOnce(new Blob(["png"], { type: "image/png" }));
+    renderTickets();
+    fireEvent.click(await screen.findByRole("button", { name: "Xem mã QR GBT-ISSUED" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Mã hỗ trợ: ${requestId}`);
+    expect(screen.queryByText("private signing error")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Thử lại mã QR" }));
+    expect(await screen.findByAltText("Mã QR vé GBT-ISSUED")).toBeVisible();
+    expect(getTicketQr).toHaveBeenCalledTimes(2);
+  });
   const createObjectURL = vi.fn(() => "blob:ticket-qr");
   const revokeObjectURL = vi.fn();
 
