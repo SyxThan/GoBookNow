@@ -284,7 +284,26 @@ export async function installVisualFixtures(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace("/api/v1", "");
     let json: unknown;
-    if (path === "/categories" || path === "/admin/categories")
+    if (path === "/auth/me")
+      json = { ...owner, roles: ["CUSTOMER", "VENDOR", "ADMIN"] };
+    else if (path === `/vendor/services/${ids.service}/slots/${ids.slot}`)
+      json = slot;
+    else if (path === "/admin/vouchers/voucher-visual")
+      json = {
+        id: "voucher-visual",
+        code: "NGAYVUI",
+        type: "FIXED",
+        fixedAmount: "50000",
+        percentageBps: null,
+        minOrderAmount: "300000",
+        maxDiscountAmount: null,
+        validFrom: "2026-10-01T00:00:00Z",
+        validUntil: "2099-10-31T00:00:00Z",
+        usageLimit: 100,
+        effectiveUsage: 12,
+        isActive: true,
+      };
+    else if (path === "/categories" || path === "/admin/categories")
       json = [category];
     else if (path === "/services")
       json = paged([
@@ -352,7 +371,7 @@ export async function installVisualFixtures(page: Page) {
         expiresAt: null,
       };
     else if (path === "/vendors/me")
-      json = page.url().includes("/vendor/application")
+      json = page.url().includes("/onboarding/application")
         ? { ...vendor, status: "PENDING" }
         : vendor;
     else if (path.endsWith("/applications/latest")) json = application;
@@ -486,7 +505,7 @@ export async function installVisualFixtures(page: Page) {
   });
 }
 
-export const routes = [
+const legacyRoutes = [
   ["home", "/", "Lên lịch cho niềm vui."],
   ["search", "/services", "Lịch trống của bạn. Trải nghiệm của riêng bạn."],
   ["service", `/services/${service.slug}`, service.title],
@@ -512,13 +531,9 @@ export const routes = [
   ["vendor-check-in", "/vendor/check-in", "Check-in vé"],
   ["vendor-services", "/vendor/services", "Trải nghiệm bạn tạo ra"],
   ["vendor-service-new", "/vendor/services/new", "Tạo dịch vụ mới"],
-  [
-    "vendor-service-edit",
-    `/vendor/services/${ids.service}`,
-    "Nội dung dịch vụ",
-  ],
+  ["vendor-service-overview", `/vendor/services/${ids.service}`, service.title],
   ["vendor-slots", `/vendor/services/${ids.service}/slots`, "Lịch & sức chứa"],
-  ["admin-applications", "/admin/vendor-applications", "Duyệt hồ sơ đối tác"],
+  ["admin-applications", "/admin/vendor-applications", "Hồ sơ đối tác"],
   ["admin-categories", "/admin/categories", "Danh mục trải nghiệm"],
   ["admin-vouchers", "/admin/vouchers", "Ưu đãi & mã giảm giá"],
   ["admin-transactions", "/admin/transactions", "Giao dịch & thanh toán"],
@@ -533,3 +548,59 @@ export const routes = [
     "Trải nghiệm tiếp theo vẫn đang chờ bạn.",
   ],
 ] as const;
+
+export function portalPath(path: string): string {
+  if (path.startsWith("/vendor/"))
+    return `${process.env.VISUAL_VENDOR_URL ?? "http://127.0.0.1:3202"}${path.replace("/vendor/application", "/onboarding/application").replace(/^\/vendor/, "")}`;
+  if (path.startsWith("/admin/"))
+    return `${process.env.VISUAL_ADMIN_URL ?? "http://127.0.0.1:3203"}${path.replace(/^\/admin/, "")}`;
+  return path;
+}
+export const routes: ReadonlyArray<readonly [string, string, string]> = [
+  ...legacyRoutes.map(
+    ([name, path, heading]) => [name, portalPath(path), heading] as const,
+  ),
+  [
+    "vendor-not-found",
+    portalPath("/vendor/trang-khong-ton-tai"),
+    "Không tìm thấy trang",
+  ],
+  [
+    "admin-not-found",
+    portalPath("/admin/trang-khong-ton-tai"),
+    "Không tìm thấy trang",
+  ],
+  ["vendor-login", portalPath("/vendor/login"), "Đăng nhập GoBookNow Vendor"],
+  [
+    "vendor-onboarding-status",
+    portalPath("/vendor/onboarding/status"),
+    "Trạng thái xét duyệt",
+  ],
+  [
+    "vendor-service-form",
+    portalPath(`/vendor/services/${ids.service}/edit`),
+    "Chỉnh sửa dịch vụ",
+  ],
+  [
+    "vendor-slot-new",
+    portalPath(`/vendor/services/${ids.service}/slots/new`),
+    "Tạo lịch mới",
+  ],
+  [
+    "vendor-slot-edit",
+    portalPath(`/vendor/services/${ids.service}/slots/${ids.slot}/edit`),
+    "Chỉnh sửa lịch",
+  ],
+  ["admin-login", portalPath("/admin/login"), "Đăng nhập GoBookNow Admin"],
+  [
+    "admin-application-detail",
+    portalPath(`/admin/vendor-applications/${ids.application}`),
+    vendor.displayName,
+  ],
+  ["admin-voucher-new", portalPath("/admin/vouchers/new"), "Tạo ưu đãi mới"],
+  [
+    "admin-voucher-edit",
+    portalPath("/admin/vouchers/voucher-visual/edit"),
+    "Chỉnh sửa NGAYVUI",
+  ],
+];

@@ -9,7 +9,7 @@ for (const [name, path, heading] of routes) {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => {
-      if (name !== "not-found" && message.type() === "error")
+      if (!name.endsWith("not-found") && message.type() === "error")
         errors.push(message.text());
     });
     await installVisualFixtures(page);
@@ -49,6 +49,7 @@ for (const [name, path, heading] of routes) {
         targets: nodes.map((n) => n.target),
       })),
     ).toEqual([]);
+    await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page).toHaveScreenshot(`${name}.png`, {
       fullPage: true,
       mask: [page.locator("[data-countdown]")],

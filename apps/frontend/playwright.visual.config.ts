@@ -3,7 +3,7 @@ export default defineConfig({
   testDir: "./e2e/visual",
   outputDir: "test-results/visual-runs",
   fullyParallel: false,
-  workers: 1,
+  workers: 2,
   timeout: 45_000,
   reporter: [
     ["list"],
@@ -22,7 +22,9 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "desktop", use: { viewport: { width: 1440, height: 1000 } } },
+    { name: "tablet", use: { viewport: { width: 768, height: 1024 } } },
+    { name: "laptop", use: { viewport: { width: 1280, height: 800 } } },
+    { name: "desktop", use: { viewport: { width: 1440, height: 900 } } },
     {
       name: "mobile",
       use: {
@@ -34,12 +36,21 @@ export default defineConfig({
   ],
   webServer:
     process.env.VISUAL_START_SERVER === "1"
-      ? {
-          command:
-            "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3200",
-          url: "http://127.0.0.1:3200",
+      ? [
+          [".", "3200", "CUSTOMER_PORT"],
+          ["../vendor-portal", "3202", "VENDOR_PORT"],
+          ["../admin-console", "3203", "ADMIN_PORT"],
+        ].map(([cwd, port, variable]) => ({
+          command: "pnpm start",
+          env: {
+            NODE_ENV: "production",
+            HOSTNAME: "127.0.0.1",
+            [variable]: port,
+          },
+          cwd,
+          url: `http://127.0.0.1:${port}/login`,
           reuseExistingServer: false,
           timeout: 60_000,
-        }
+        }))
       : undefined,
 });

@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { ids, installVisualFixtures, routes } from "./fixtures";
+import { ids, installVisualFixtures, portalPath } from "./fixtures";
 
 async function accessible(page: Page) {
   await page.evaluate(() => document.fonts.ready);
@@ -15,6 +15,8 @@ async function accessible(page: Page) {
       targets: nodes.map((n) => n.target),
     })),
   ).toEqual([]);
+  // Axe/reload can retain scroll. Capture sticky headers at the initial page position.
+  await page.evaluate(() => window.scrollTo(0, 0));
 }
 async function dialogFits(page: Page) {
   const dialog = page.getByRole("dialog");
@@ -94,42 +96,59 @@ test("Cancellation preview: fees, scroll and explicit confirmation", async ({
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("Voucher and slot editors keep all actions reachable on small phones", async ({
+test("Dedicated voucher and slot forms keep actions reachable on a 320px phone", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 640 });
-  await page.goto("/admin/vouchers");
-  await page.getByRole("button", { name: "+ Tạo ưu đãi" }).click();
-  await dialogFits(page);
-  await page
-    .getByRole("button", { name: "Lưu ưu đãi" })
-    .scrollIntoViewIfNeeded();
-  await expect(
-    page.getByRole("button", { name: "Lưu ưu đãi" }),
-  ).toBeInViewport();
-  await expect(page).toHaveScreenshot("voucher-dialog-320.png");
-  await page.keyboard.press("Escape");
-  await page.goto(`/vendor/services/${ids.service}/slots`);
-  await page.getByRole("button", { name: "+ Thêm lịch", exact: true }).click();
-  await dialogFits(page);
-  await page.getByRole("button", { name: "Lưu lịch" }).scrollIntoViewIfNeeded();
-  await expect(page.getByRole("button", { name: "Lưu lịch" })).toBeInViewport();
-  await expect(page).toHaveScreenshot("slot-dialog-320.png");
+  for (const [name, path, button] of [
+    ["voucher-form-320", "/admin/vouchers/new", "Lưu ưu đãi"],
+    ["slot-form-320", `/vendor/services/${ids.service}/slots/new`, "Lưu lịch"],
+  ]) {
+    await page.goto(portalPath(path));
+    const save = page.getByRole("button", { name: button, exact: true });
+    await save.scrollIntoViewIfNeeded();
+    await expect(save).toBeInViewport();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    for (const field of await page.locator("form .input").all()) {
+      const bounds = await field.evaluate((element) => {
+        const control = element.getBoundingClientRect();
+        const container = element.closest("label")!.getBoundingClientRect();
+        return {
+          left: control.left,
+          right: control.right,
+          containerLeft: container.left,
+          containerRight: container.right,
+        };
+      });
+      expect(bounds.left).toBeGreaterThanOrEqual(bounds.containerLeft - 1);
+      expect(bounds.right).toBeLessThanOrEqual(bounds.containerRight + 1);
+    }
+    const header = page.locator(".portal-topbar");
+    const brand = await header.getByRole("link").first().boundingBox();
+    const logout = await header
+      .getByRole("button", { name: "Đăng xuất", exact: true })
+      .boundingBox();
+    expect(brand!.x + brand!.width).toBeLessThanOrEqual(logout!.x);
+    await accessible(page);
+    await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: true });
+  }
 });
-
-test("Admin selected application and profile edit have accessible form labels", async ({
+test("Admin application details and profile editing have accessible labels", async ({
   page,
 }) => {
-  await page.goto("/admin/vendor-applications");
-  await page.getByRole("button", { name: /Xưởng Gốm Mùa Nắng/ }).click();
+  await page.goto(portalPath(`/admin/vendor-applications/${ids.application}`));
   await expect(
-    page.getByRole("button", { name: "Phê duyệt đối tác" }),
+    page.getByRole("button", { name: "Phê duyệt đối tác", exact: true }),
   ).toBeVisible();
   await accessible(page);
   await expect(page).toHaveScreenshot("admin-application-selected.png", {
     fullPage: true,
   });
-  await page.goto("/vendor/profile");
+  await page.goto(portalPath("/vendor/profile"));
   await page.getByRole("button", { name: "Chỉnh sửa", exact: true }).click();
   await accessible(page);
   await expect(page).toHaveScreenshot("vendor-profile-edit.png", {
@@ -144,7 +163,7 @@ test("Network error, empty search, pending payment and expired payment remain di
     route.fulfill({ status: 503, json: { message: "Unavailable" } }),
   );
   await page.goto("/services");
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
   await accessible(page);
   await expect(page).toHaveScreenshot("search-error.png", { fullPage: true });
   await page.route("**/api/v1/services?**", (route) =>
@@ -216,35 +235,102 @@ test("Mobile menu traps focus and restores its trigger", async ({ page }) => {
   await expect(trigger).toBeFocused();
 });
 
-test("Tablet and laptop route matrix contains content and hard shadows", async ({
+test("Portal drawer supports keyboard close and navigation on phones", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
-  for (const width of [768, 1280]) {
-    await page.setViewportSize({ width, height: 1024 });
-    for (const [name, path] of routes) {
-      await page.goto(path);
-      await page.locator("main h1").waitFor();
-      await page.waitForTimeout(120);
-      const overflow = await page.evaluate(() => ({
-        width: document.documentElement.clientWidth,
-        scroll: document.documentElement.scrollWidth,
-        panels: Array.from(document.querySelectorAll("main .panel")).map(
-          (element) => ({
-            left: element.getBoundingClientRect().left,
-            right: element.getBoundingClientRect().right,
-          }),
-        ),
-      }));
-      expect(overflow.scroll, `${name} at ${width}px`).toBeLessThanOrEqual(
-        overflow.width + 1,
-      );
-      for (const panel of overflow.panels.filter((panel) => panel.right > 0)) {
-        expect(panel.left, `${name}: left edge`).toBeGreaterThanOrEqual(3);
-        expect(panel.right + 3, `${name}: hard shadow`).toBeLessThanOrEqual(
-          overflow.width,
-        );
-      }
-    }
+  await page.setViewportSize({ width: 375, height: 812 });
+  for (const path of ["/vendor/dashboard", "/admin/transactions"]) {
+    await page.goto(portalPath(path));
+    const trigger = page.getByRole("button", {
+      name: "Mở điều hướng",
+      exact: true,
+    });
+    await trigger.click();
+    await dialogFits(page);
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await page.getByRole("dialog").getByRole("link").first().click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(portalPath(path));
+    const links = page.getByRole("complementary").getByRole("link");
+    await page
+      .getByRole("link", { name: "Bỏ qua điều hướng", exact: true })
+      .focus();
+    for (
+      let index = 0;
+      index < 10 &&
+      !(await links
+        .first()
+        .evaluate((element) => element === document.activeElement));
+      index++
+    )
+      await page.keyboard.press("Tab");
+    await expect(links.first()).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(links.nth(1)).toBeFocused();
+    const destination = await links.nth(1).getAttribute("href");
+    const expected = new URL(destination!, page.url()).href;
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(expected);
+    await accessible(page);
+    await page.setViewportSize({ width: 375, height: 812 });
   }
+});
+
+test("Backend role response prevents protected Admin content from mounting", async ({
+  page,
+}) => {
+  let operationalRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.includes("/api/v1/admin/"))
+      operationalRequests++;
+  });
+  await page.route("**/api/v1/auth/me", (route) =>
+    route.fulfill({
+      json: { id: ids.user, roles: ["CUSTOMER"], profile: null },
+    }),
+  );
+  await page.goto(portalPath("/admin/transactions"));
+  await expect(
+    page.getByRole("heading", { name: "Bạn chưa có quyền truy cập" }),
+  ).toBeVisible();
+  expect(operationalRequests).toBe(0);
+  await accessible(page);
+  await expect(page).toHaveScreenshot("admin-permission-denied.png", {
+    fullPage: true,
+  });
+});
+
+test("Vendor resource error can retry into an honest empty state", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/vendor/services?**", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { message: "Service temporarily unavailable." },
+    }),
+  );
+  await page.goto(portalPath("/vendor/services"));
+  await expect(
+    page.getByRole("heading", { name: "Chưa thể mở nội dung này" }),
+  ).toBeVisible();
+  await accessible(page);
+  await expect(page).toHaveScreenshot("vendor-resource-error.png", {
+    fullPage: true,
+  });
+  await page.route("**/api/v1/vendor/services?**", (route) =>
+    route.fulfill({
+      json: { items: [], page: 1, total: 0, totalPages: 0, limit: 12 },
+    }),
+  );
+  await page.getByRole("button", { name: "Thử lại", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dành chỗ cho trải nghiệm đầu tiên" }),
+  ).toBeVisible();
+  await accessible(page);
+  await expect(page).toHaveScreenshot("vendor-resource-empty.png", {
+    fullPage: true,
+  });
 });
